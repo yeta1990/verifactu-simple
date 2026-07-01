@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Veri*Factu — Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.3/css/bulma.min.css">
+    <style>
+        .stat-card .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #3273dc;
+            line-height: 1.2;
+        }
+        .stat-card .stat-label {
+            font-size: 1rem;
+            color: #7a7a7a;
+            margin-top: 0.25rem;
+        }
+        .stat-card .icon-large {
+            font-size: 2rem;
+            color: #3273dc;
+            margin-bottom: 0.5rem;
+        }
+        .section-dashboard {
+            padding: 1.5rem 1.5rem 3rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="navbar-placeholder"></div>
+
+    <section class="section section-dashboard">
+        <div class="container">
+            <p class="title">Dashboard</p>
+            <p class="subtitle">Resumen del sistema</p>
+
+            <!-- Stat Cards -->
+            <div class="columns is-multiline">
+                <div class="column is-4">
+                    <div class="box stat-card has-text-centered">
+                        <div class="icon-large">🏢</div>
+                        <div class="stat-value" id="stat-companies">—</div>
+                        <div class="stat-label">Empresas registradas</div>
+                    </div>
+                </div>
+                <div class="column is-4">
+                    <div class="box stat-card has-text-centered">
+                        <div class="icon-large">📋</div>
+                        <div class="stat-value" id="stat-pending">—</div>
+                        <div class="stat-label">Facturas pendientes de envío</div>
+                    </div>
+                </div>
+                <div class="column is-4">
+                    <div class="box stat-card has-text-centered">
+                        <div class="icon-large">✅</div>
+                        <div class="stat-value" id="stat-sent-today">—</div>
+                        <div class="stat-label">Facturas enviadas hoy</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <p class="title is-5 mt-5">Acciones rápidas</p>
+            <div class="buttons is-flex is-flex-wrap-wrap is-gapless mt-2">
+                <a href="/frontend/companies.html" class="button is-primary">
+                    <span class="icon"><strong>➕</strong></span>
+                    <span>Nueva empresa</span>
+                </a>
+                <a href="/frontend/invoice.html" class="button is-info">
+                    <span class="icon"><strong>📄</strong></span>
+                    <span>Nueva factura</span>
+                </a>
+                <a href="/frontend/process.html" class="button is-success">
+                    <span class="icon"><strong>📤</strong></span>
+                    <span>Enviar facturas</span>
+                </a>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="box mt-5">
+                <p class="title is-5">Últimos movimientos</p>
+                <div id="recent-activity"></div>
+            </div>
+        </div>
+    </section>
+
+    <script src="/frontend/app.js"></script>
+    <script src="/frontend/index.js"></script>
+</body>
+</html>

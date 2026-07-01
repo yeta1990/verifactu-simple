@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Configuración — Veri*Factu</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.3/css/bulma.min.css">
+    <script src="/frontend/app.js"></script>
+    <script src="/frontend/config.js"></script>
+</head>
+<body>
+    <div id="app"></div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('app').innerHTML = navbarHTML('config');
+        });
+    </script>
+    <section class="section">
+        <div class="container">
+            <h1 class="title">Configuración del Sistema</h1>
+
+            <form id="config-form">
+                <!-- debug -->
+                <div class="field">
+                    <label class="checkbox">
+                        <input type="checkbox" id="debug" name="debug"> Debug
+                    </label>
+                </div>
+
+                <!-- backend_url -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="backend_url">Backend URL</label>
+                        <input class="input" type="text" id="backend_url" name="backend_url" placeholder="http://localhost:3000">
+                    </div>
+                </div>
+
+                <!-- sqlite_path -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="sqlite_path">SQLite Database Path</label>
+                        <input class="input" type="text" id="sqlite_path" name="sqlite_path" placeholder="./verifactu.db">
+                    </div>
+                </div>
+
+                <!-- software_company_name -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="software_company_name">Software Company Name</label>
+                        <input class="input" type="text" id="software_company_name" name="software_company_name" placeholder="Mi Empresa S.L.">
+                    </div>
+                </div>
+
+                <!-- software_company_nif -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="software_company_nif">Software Company NIF</label>
+                        <input class="input" type="text" id="software_company_nif" name="software_company_nif" placeholder="B12345678">
+                    </div>
+                </div>
+
+                <!-- software_name -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="software_name">Software Name</label>
+                        <input class="input" type="text" id="software_name" name="software_name" placeholder="VeriFactu Manager">
+                    </div>
+                </div>
+
+                <!-- software_id -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="software_id">Software ID</label>
+                        <input class="input" type="text" id="software_id" name="software_id" placeholder="VF-MGR-2024">
+                    </div>
+                </div>
+
+                <!-- software_version -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="software_version">Software Version</label>
+                        <input class="input" type="text" id="software_version" name="software_version" placeholder="1.0.0">
+                    </div>
+                </div>
+
+                <!-- software_install_number -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="software_install_number">Software Install Number</label>
+                        <input class="input" type="text" id="software_install_number" name="software_install_number" placeholder="A123456789">
+                    </div>
+                </div>
+
+                <!-- verifactu_log_file -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="verifactu_log_file">VeriFactu Log File</label>
+                        <input class="input" type="text" id="verifactu_log_file" name="verifactu_log_file" placeholder="./logs/verifactu.log">
+                    </div>
+                </div>
+
+                <!-- verifactu_save_responses -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="verifactu_save_responses">Save Responses</label>
+                        <input class="input" type="text" id="verifactu_save_responses" name="verifactu_save_responses" placeholder="./responses">
+                    </div>
+                </div>
+
+                <!-- send_mode -->
+                <div class="field">
+                    <div class="control">
+                        <label class="label" for="send_mode">Send Mode</label>
+                        <div class="select">
+                            <select id="send_mode" name="send_mode">
+                                <option value="mock">mock</option>
+                                <option value="test">test</option>
+                                <option value="prod">prod</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field mt-4">
+                    <div class="control">
+                        <button type="submit" class="button is-primary">Guardar configuración</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </section>
+</body>
+</html>
