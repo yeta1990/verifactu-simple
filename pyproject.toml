@@ -9,3 +9,14 @@ license = {text = "MIT"}
 keywords = ["verifactu", "veri*factu", "facturación", "facturación electrónica", "aeat"]
 homepage = "https://github.com/EduardoRuizM/verifactu-api-python"
 repository = "https://github.com/EduardoRuizM/verifactu-api-python"
+dependencies = [
+    "Flask>=3.0",
+    "Flask-SQLAlchemy>=3.0",
+    "qrcode>=8.0",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]

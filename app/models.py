@@ -10,32 +10,31 @@ from flask import jsonify
 from sqlalchemy import text
 from http import HTTPStatus
 from datetime import datetime
-from sqlalchemy.dialects.mysql import INTEGER
 
 from app import db
 
 
 class Company(db.Model):
     __tablename__ = 'companies'
-    id = db.Column(INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(25), unique=True, nullable=False)
     vat_id = db.Column(db.String(25), unique=True, nullable=False)
     address = db.Column(db.String(75))
     postal_code = db.Column(db.String(10))
     city = db.Column(db.String(25))
     state = db.Column(db.String(25))
-    country = db.Column(db.String(2), default='ES', server_default=text("'ES'"))
+    country = db.Column(db.String(2), default='ES')
     email = db.Column(db.String(50))
     phone = db.Column(db.String(50))
     contact = db.Column(db.String(50))
-    formula = db.Column(db.String(25), default='%y%/%n.8%', server_default=text("'%y%/%n.8%'"))
-    formula_r = db.Column(db.String(25), default='R-%y%/%n.8%', server_default=text("'R-%y%/%n.8%'"))
-    first_num = db.Column(INTEGER(unsigned=True), default='1', server_default=text("'1'"))
-    created = db.Column(db.Date, nullable=False, default=db.func.now())
+    formula = db.Column(db.String(25), default='%y%/%n.8%')
+    formula_r = db.Column(db.String(25), default='R-%y%/%n.8%')
+    first_num = db.Column(db.Integer, default=1)
+    created = db.Column(db.Date, nullable=False, default=db.func.current_date())
     key_file = db.Column(db.String(200))
     cert_file = db.Column(db.String(200))
     next_send = db.Column(db.DateTime)
-    test = db.Column(db.Boolean, nullable=False, default=True, server_default='1')
+    test = db.Column(db.Boolean, nullable=False, default=True)
 
     def __repr__(self):
         return f'<Company {self.name}>'
@@ -59,17 +58,17 @@ class Company(db.Model):
 
 class Invoice(db.Model):
     __tablename__ = 'invoices'
-    id = db.Column(INTEGER(unsigned=True), primary_key=True, autoincrement=True)
-    company_id = db.Column(INTEGER(unsigned=True), db.ForeignKey('companies.id', ondelete='RESTRICT'), nullable=False)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id', ondelete='RESTRICT'), nullable=False)
     dt = db.Column(db.DateTime, index=True, nullable=False, default=db.func.current_timestamp())
-    num = db.Column(INTEGER(unsigned=True), index=True, nullable=False)
+    num = db.Column(db.Integer, index=True, nullable=False)
     name = db.Column(db.String(50), nullable=False)
     vat_id = db.Column(db.String(25))
     address = db.Column(db.String(75))
     postal_code = db.Column(db.String(10))
     city = db.Column(db.String(25))
     state = db.Column(db.String(25))
-    country = db.Column(db.String(2), default='ES', server_default=text("'ES'"))
+    country = db.Column(db.String(2), default='ES')
     tvat = db.Column(db.Float, nullable=False, default=0.0)
     bi = db.Column(db.Float, nullable=False, default=0.0)
     total = db.Column(db.Float, nullable=False, default=0.0)
@@ -81,9 +80,9 @@ class Invoice(db.Model):
     verifactu_stype = db.Column(db.String(1))
     verifactu_dt = db.Column(db.TIMESTAMP, index=True)
     verifactu_csv = db.Column(db.Text)
-    verifactu_err = db.Column(INTEGER(unsigned=True))
-    invoice_ref_id = db.Column(INTEGER(unsigned=True), db.ForeignKey('invoices.id', ondelete='RESTRICT'))
-    voided = db.Column(db.Boolean, index=True, nullable=False, default=False, server_default='0')
+    verifactu_err = db.Column(db.Integer)
+    invoice_ref_id = db.Column(db.Integer, db.ForeignKey('invoices.id', ondelete='RESTRICT'))
+    voided = db.Column(db.Boolean, index=True, nullable=False, default=False)
 
     company = db.relationship('Company', backref='invoices')
     invoice_ref = db.relationship('Invoice', backref=db.backref('invoice_refs', remote_side=[id]))
@@ -100,7 +99,12 @@ class Invoice(db.Model):
         result = to_dict(self)
         result['dt'] = self.dt.strftime('%Y-%m-%d %H:%M:%S')
         result['verifactu_dt'] = self.verifactu_dt.strftime('%Y-%m-%d %H:%M:%S') if self.verifactu_dt else None
-        result['invoice_ref'] = self.invoice_ref.get_number_format() if self.invoice_ref else None
+        # invoice_ref can be a list (backref) or a single Invoice; handle both
+        ref = self.invoice_ref
+        if hasattr(ref, 'get_number_format'):
+            result['invoice_ref'] = ref.get_number_format()
+        else:
+            result['invoice_ref'] = None
         result['number_format'] = self.get_number_format()
         return result
 
@@ -118,7 +122,7 @@ class Invoice(db.Model):
         current_year = datetime.now().year
         filters = [
             Invoice.company_id == self.company_id,
-            db.extract('year', Invoice.dt) == current_year
+            db.func.strftime('%Y', Invoice.dt) == str(current_year)
         ]
 
         if getattr(self, 'verifactu_type', None):
@@ -178,12 +182,12 @@ class Invoice(db.Model):
 
 class InvoiceLine(db.Model):
     __tablename__ = 'invoice_lines'
-    invoice_id = db.Column(INTEGER(unsigned=True), db.ForeignKey('invoices.id', ondelete='CASCADE'), primary_key=True)
-    num = db.Column(INTEGER(unsigned=True), primary_key=True, default=1)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id', ondelete='CASCADE'), primary_key=True)
+    num = db.Column(db.Integer, primary_key=True, default=1)
     descr = db.Column(db.String(100))
     units = db.Column(db.Integer)
     price = db.Column(db.Float)
-    vat = db.Column(INTEGER(unsigned=True))
+    vat = db.Column(db.Integer)
     tvat = db.Column(db.Float)
     bi = db.Column(db.Float)
     total = db.Column(db.Float)

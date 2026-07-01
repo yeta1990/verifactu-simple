@@ -20,6 +20,22 @@ from app import db, config_file, time_zone
 from .models import Company, Invoice, InvoiceLine
 
 
+# Respuesta SOAP simulada para modo mock
+MOCK_SOAP_RESPONSE_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns:tikR="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/es/aeat/tike/cont/ws/RespuestaSuministro.xsd"
+    xmlns:tik="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/es/aeat/tike/cont/ws/SuministroInformacion.xsd">
+    <soapenv:Body>
+        <tikR:RespuestaFactuSistemaFacturacion>
+            <tikR:Cabecera>
+                <tikR:TiempoEsperaEnvio>1</tikR:TiempoEsperaEnvio>
+            </tikR:Cabecera>
+            {lines}
+        </tikR:RespuestaFactuSistemaFacturacion>
+    </soapenv:Body>
+</soapenv:Envelope>"""
+
+
 class verifactuXML:
     def __init__(self):
         config = configparser.ConfigParser(allow_unnamed_section=True)
@@ -33,6 +49,7 @@ class verifactuXML:
         self.software_id = config.get(UNNAMED_SECTION, 'software_id', fallback='vf')[:2]
         self.software_version = config.get(UNNAMED_SECTION, 'software_version', fallback='1.0')
         self.software_install_number = config.get(UNNAMED_SECTION, 'software_install_number', fallback='00001')
+        self.send_mode = config.get(UNNAMED_SECTION, 'send_mode', fallback='mock')
 
         self.url_prod = 'https://www1.agenciatributaria.gob.es/wlpl/TIKE-CONT/ws/SistemaFacturacion/VerifactuSOAP'
         self.url_test = 'https://prewww1.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion/VerifactuSOAP'
@@ -231,7 +248,7 @@ class verifactuXML:
         resp = {'companies': {}}
 
         companies = db.session.query(Company,
-            (db.func.unix_timestamp(Company.next_send) - db.func.unix_timestamp(db.func.now())).label('nxSend')
+            (db.func.strftime('%s', Company.next_send) - db.func.strftime('%s', 'now')).label('nxSend')
         ).all()
 
         for company, nx_send in companies:
@@ -295,7 +312,7 @@ class verifactuXML:
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(xml)
 
-        ret = self.send_xml(company, xml)
+        ret = self.send_xml(company, xml, invoices=invoices)
         if ret.get('status') != 200 or ret.get('error'):
             return ret
 
@@ -323,7 +340,7 @@ class verifactuXML:
         timestamp_presentacion = self.get_text(body.find(f'.//{{{namespaces["tikR"]}}}DatosPresentacion/{{{namespaces["tik"]}}}TimestampPresentacion'))
 
         db.session.query(Company).filter_by(id=company.id).update({
-            'next_send': db.func.DATE_ADD(db.func.NOW(), db.text(f"INTERVAL {tiempo_espera_envio} SECOND"))
+            'next_send': db.func.datetime(db.func.now(), f'+{tiempo_espera_envio} seconds')
         })
         db.session.commit()
 
@@ -338,21 +355,30 @@ class verifactuXML:
                 continue
             invoice = invoices[index]
 
+            # Convert datetime strings to proper datetime objects for SQLite
+            verifactu_dt_value = None
+            if timestamp_presentacion:
+                verifactu_dt_value = datetime.fromisoformat(timestamp_presentacion)
+            elif dt:
+                verifactu_dt_value = datetime.fromisoformat(dt)
+
             stmt = update(Invoice).where(Invoice.id == invoice.id).values({
-                'verifactu_dt': timestamp_presentacion if timestamp_presentacion else dt,
+                'verifactu_dt': verifactu_dt_value,
                 'verifactu_err': cod_error
             })
+            # cod_error is a string from XML; treat "0" or empty as success
+            has_error = cod_error is not None and str(cod_error).strip() != '0'
+
             if csv:
                 verifactu_csv = invoice.verifactu_csv + "\n" + csv if invoice.verifactu_csv else csv
                 stmt = stmt.values({'verifactu_csv': verifactu_csv.strip()})
             if timestamp_presentacion:
-                stmt = stmt.values({'fingerprint': self.fingerprint(company, invoice, last_map[invoice.id], timestamp_presentacion, voided)})
-            if not cod_error and voided:
+                stmt = stmt.values({'fingerprint': self.fingerprint(company, invoice, last_map[invoice.id], verifactu_dt_value.isoformat(), voided)})
+            if not has_error and voided:
                 stmt = stmt.values({'voided': 1})
             db.session.execute(stmt)
             db.session.commit()
-
-            if cod_error:
+            if has_error:
                 ret['ko'].append({'id': invoice.id, 'num': num_serie_factura, 'codError': cod_error, 'descrError': descr_error})
             else:
                 ret['ok'].append({'id': invoice.id, 'num': num_serie_factura})
@@ -444,11 +470,37 @@ class verifactuXML:
     def dtnow(self):
         return datetime.now().strftime('%Y%m%d%H%M%S')
 
-    def send_xml(self, company, xml, log=True):
+    def send_xml(self, company, xml, log=True, invoices=None):
         error = None
         xml = re.sub(r'>\s+<', '><', re.sub(r'\s*xmlns', ' xmlns', xml))
 
+        # --- Mock mode: no network, no certs ---
+        if self.send_mode == 'mock':
+            # Generar respuesta mock con N líneas (una por factura)
+            lineas_xml = ''
+            inv_list = invoices if invoices else []
+            for inv in inv_list:
+                num_serie = inv.get_number_format()
+                lineas_xml += f"""<tikR:RespuestaLinea>
+                    <tikR:IDFactura><tik:NumSerieFactura>{num_serie}</tik:NumSerieFactura></tikR:IDFactura>
+                    <tikR:EstadoRegistro>Correcto</tikR:EstadoRegistro>
+                    <tikR:CodigoErrorRegistro>0</tikR:CodigoErrorRegistro>
+                </tikR:RespuestaLinea>"""
+
+            response_xml = MOCK_SOAP_RESPONSE_TEMPLATE.format(lines=lineas_xml)
+            if self.save_responses and os.path.isdir(self.save_responses):
+                file_path = os.path.join(self.save_responses.rstrip('/'), f'mock_send_{self.dtnow()}.xml')
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(response_xml)
+            return {'status': 200, 'response': response_xml, 'error': None}
+
+        # --- Test/Prod mode: real SOAP call ---
         url = self.url_test if company.test == 1 else self.url_prod
+
+        # Validate certs in non-mock mode
+        if not company.cert_file or not company.key_file:
+            return {'status': 400, 'response': '', 'error': 'Missing certificate or key file'}
+
         context = ssl.create_default_context()
         context.load_cert_chain(certfile=company.cert_file, keyfile=company.key_file)
         req = urllib.request.Request(url, data=xml.encode('utf-8'), headers={'Content-Type': 'text/xml'}, method='POST')

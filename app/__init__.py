@@ -4,6 +4,7 @@
 #
 
 import io
+import os
 import re
 import sys
 import qrcode
@@ -12,9 +13,12 @@ import configparser
 from http import HTTPStatus
 from urllib.parse import urlparse
 from flask_sqlalchemy import SQLAlchemy
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from configparser import UNNAMED_SECTION
+from sqlalchemy import text
 
+
+db = SQLAlchemy()
 
 app = Flask(__name__)
 config_file = 'verifactu.conf'
@@ -26,17 +30,14 @@ def create_app():
     config.read(config_file)
     debug = config.getboolean(UNNAMED_SECTION, 'debug', fallback=False)
     backend_url = urlparse(config.get(UNNAMED_SECTION, 'backend_url', fallback='http://localhost:8074'))
-    mysql_host = config.get(UNNAMED_SECTION, 'mysql_host', fallback='localhost')
-    mysql_port = config.getint(UNNAMED_SECTION, 'mysql_port', fallback=3306)
-    mysql_user = config.get(UNNAMED_SECTION, 'mysql_user', fallback='')
-    mysql_password = config.get(UNNAMED_SECTION, 'mysql_password', fallback='')
-    mysql_database = config.get(UNNAMED_SECTION, 'mysql_database', fallback='')
 
-    if not mysql_host or not mysql_user or not mysql_password or not mysql_database:
-        print(f'No MySQL config in {config_file}')
-        sys.exit(1)
+    # SQLite path from config
+    sqlite_path = config.get(UNNAMED_SECTION, 'sqlite_path', fallback='verifactu.db')
+    # Resolve to absolute path so SQLite can find it
+    if not os.path.isabs(sqlite_path) and sqlite_path != ':memory:':
+        sqlite_path = os.path.join(os.path.dirname(os.path.abspath(config_file)), sqlite_path)
 
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_database}'
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{sqlite_path}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['HOST'] = backend_url.hostname or 'localhost'
     app.config['PORT'] = backend_url.port or 8074
@@ -45,15 +46,45 @@ def create_app():
     with app.app_context():
         from . import models
         db.create_all()
+        # Activar WAL mode para concurrencia lectura/escritura
+        db.session.execute(text("PRAGMA journal_mode=WAL"))
+        # Timeout de 5s si la BD está bloqueada
+        db.session.execute(text("PRAGMA busy_timeout=5000"))
+        db.session.commit()
 
     return app
 
 
-db = SQLAlchemy()
-
-
 from .models import Company, Invoice
 from .verifactu import verifactuXML
+
+
+@app.route('/api/companies', methods=['GET'])
+def get_companies():
+    return jsonify([c.to_dict() for c in Company.query.all()])
+
+
+@app.route('/api/companies', methods=['POST'])
+def create_company():
+    data = request.get_json(silent=True) or {}
+    ret, status = Company.validate_fields(data)
+    if status:
+        return ret, status
+
+    # Check for duplicate name or vat_id
+    if Company.query.filter_by(name=ret.get('name')).first():
+        return jsonify({'error': 'Company name already exists'}), HTTPStatus.CONFLICT
+    if Company.query.filter_by(vat_id=ret.get('vat_id')).first():
+        return jsonify({'error': 'VAT ID already exists'}), HTTPStatus.CONFLICT
+
+    try:
+        company = Company(**ret)
+        db.session.add(company)
+        db.session.commit()
+        return jsonify({'id': company.id}), HTTPStatus.CREATED
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), HTTPStatus.BAD_REQUEST
 
 
 @app.route('/api/<int:company_id>/invoices', methods=['GET'])
@@ -189,3 +220,39 @@ def get_query(company_id):
     month = request.args.get('month', type=int, default=0)
     verifactuxml = verifactuXML()
     return jsonify(verifactuxml.consulta(company, year, month))
+
+
+# --- Frontend serving ---
+
+FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend')
+
+
+@app.route('/')
+def serve_index():
+    return send_from_directory(FRONTEND_DIR, 'index.html')
+
+
+@app.route('/frontend/<path:filename>')
+def serve_frontend(filename):
+    return send_from_directory(FRONTEND_DIR, filename)
+
+
+# --- Config endpoints for frontend ---
+
+@app.route('/api/config', methods=['GET'])
+def get_config():
+    config = configparser.ConfigParser(allow_unnamed_section=True)
+    config.read(config_file)
+    return jsonify(dict(config.items(UNNAMED_SECTION)))
+
+
+@app.route('/api/config', methods=['POST'])
+def save_config():
+    data = request.get_json(silent=True) or {}
+    config = configparser.ConfigParser(allow_unnamed_section=True)
+    config.read(config_file)
+    for key, value in data.items():
+        config.set(UNNAMED_SECTION, key, str(value))
+    with open(config_file, 'w') as f:
+        config.write(f)
+    return jsonify({'message': 'Config saved. Restart server to apply changes.'})
