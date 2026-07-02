@@ -320,15 +320,17 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
     const leftX = MX;
     const rightX = MX + colW + colGap;
 
-    // ── Palette ──
+    // ── Palette (design system backoffice) ──
     const C = {
-        green:     [72, 199, 138],
-        dark:      [33, 37, 41],
-        grey:      [108, 117, 125],
-        lightGrey: [248, 249, 250],
-        midGrey:   [222, 226, 230],
+        green:     [13, 148, 136],    // --color-primary #0d9488
+        greenDark: [15, 118, 110],    // --color-primary-dark #0f766e
+        dark:      [30, 41, 59],      // --color-dark #1e293b
+        text:      [51, 65, 85],      // --color-text #334155
+        grey:      [100, 116, 139],   // --color-text-light #64748b
+        lightGrey: [248, 250, 252],   // --color-bg-soft #f8fafc
+        midGrey:   [226, 232, 240],   // --color-border #e2e8f0
         white:     [255, 255, 255],
-        bg:        [245, 247, 250],
+        bg:        [240, 253, 250],   // --color-bg-accent #f0fdfa
     };
 
     /** Draw a rounded-ish background box */
@@ -409,11 +411,8 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 3. INVOICE META (number, date, type, status)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const metaH = 18;
+    const metaH = 14;
     box(leftX, y, contentW, metaH, C.lightGrey);
-
-    const type = inv.verifactu_type || 'F1';
-    const statusText = inv.voided ? 'Anulada' : inv.verifactu_dt ? 'Enviada a AEAT' : 'Borrador';
 
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
@@ -421,14 +420,7 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
     doc.text(`Factura: ${inv.number_format}`, leftX + 6, y + 7);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...C.grey);
-    doc.text(`Fecha: ${formatDate(inv.dt)}`, leftX + 6, y + 13);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...C.dark);
-    doc.text(`Tipo: ${type}`, rightX + 20, y + 7, { align: 'right' });
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...C.grey);
-    doc.text(`Estado: ${statusText}`, rightX + 20, y + 13, { align: 'right' });
+    doc.text(`Fecha: ${formatDate(inv.dt)}`, leftX + 6 + doc.getTextWidth(`Factura: ${inv.number_format}`) + 8, y + 7);
 
     y += metaH + 10;
 
@@ -450,7 +442,7 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
     doc.autoTable({
         startY: y + 2,
         margin: { left: MX, right: MX },
-        head: [['Descripción', 'Uds.', 'Precio', 'Base', 'IVA %', 'Cuota IVA', 'Total']],
+        head: [['Descripción', 'Uds.', 'Precio', 'Base', 'IVA %', 'IVA €', 'Total']],
         body: tableData.length > 0 ? tableData : [['—', '', '', '', '', '', '']],
         theme: 'striped',
         styles: {
@@ -507,7 +499,7 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
 
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...C.grey);
-    doc.text('Cuota IVA', txLabel, totalsY + 16);
+    doc.text('IVA', txLabel, totalsY + 16);
     doc.setTextColor(...C.dark);
     doc.setFont('helvetica', 'bold');
     doc.text(formatEUR(inv.tvat), txValue, totalsY + 16, { align: 'right' });
@@ -560,17 +552,6 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
         doc.setTextColor(...C.grey);
         doc.text('QR no disponible', pageW - MX - 30, footerY + footerBoxH / 2);
     }
-
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 7. PAGE BOTTOM
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    doc.setDrawColor(...C.midGrey);
-    doc.setLineWidth(0.3);
-    doc.line(MX, pageH - 12, pageW - MX, pageH - 12);
-    doc.setFontSize(6);
-    doc.setTextColor(...C.grey);
-    doc.text('Documento generado por Veri*Factu', MX, pageH - 7);
-    doc.text(`${formatDate(new Date().toISOString())}`, pageW - MX, pageH - 7, { align: 'right' });
 
     doc.save(`factura_${inv.number_format}.pdf`);
 }
