@@ -45,10 +45,10 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(data => {
             companiesList = Array.isArray(data) ? data : (data.companies || []);
             buildCompanySelector();
-            return apiFetch('/api/process');
+            return apiFetch('/api/pending');
         })
-        .then(processResult => {
-            renderResults(processResult);
+        .then(pendingResult => {
+            renderResults(pendingResult);
         })
         .catch(err => {
             render(`
@@ -101,33 +101,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- render results from API ---
     function renderResults(data) {
-        const companies = data.companies || {};
-        const companiesEl = document.getElementById('results-area');
-        if (!companiesEl) {
-            renderApp(companies);
-            return;
-        }
-
-        let allOk = [];
-        let allKo = [];
-        let waitMessages = [];
-        let pendingInvoiceCounts = [];
-
-        for (const [companyId, result] of Object.entries(companies)) {
-            if (result.message) {
-                waitMessages.push({ companyId, message: result.message });
-            } else if (result.ok || result.ko) {
-                allOk = allOk.concat(result.ok || []);
-                allKo = allKo.concat(result.ko || []);
-            }
-            pendingInvoiceCounts.push({ companyId, ...result });
-        }
+        // /api/pending returns { pending: [...] }
+        const pendingInvoices = Array.isArray(data.pending) ? data.pending : [];
 
         renderApp({
-            ok: allOk,
-            ko: allKo,
-            waitMessages,
-            pendingInvoiceCounts,
+            ok: [],
+            ko: [],
+            waitMessages: [],
+            pendingInvoiceCounts: pendingInvoices,
         });
     }
 
@@ -155,27 +136,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
             `;
-        }
-
-        // Build next-send info
-        let nextSendHTML = '';
-        for (const wm of waitMessages) {
-            const match = wm.message && wm.message.match(/Next send in (\d+) seconds/);
-            const seconds = match ? parseInt(match[1], 10) : null;
-            if (seconds && seconds > 0) {
-                nextSendHTML += `
-                    <div class="notification is-warning">
-                        <strong>Próximo envío en ${seconds} segundos.</strong><br>
-                        Las facturas se enviarán automáticamente al alcanzar el tiempo programado.
-                    </div>
-                `;
-            } else {
-                nextSendHTML = `
-                    <div class="notification is-info">
-                        <strong>Sin programación.</strong> Las facturas pendientes se enviarán al pulsar "Enviar".
-                    </div>
-                `;
-            }
         }
 
         // Build OK results
@@ -217,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <table class="table is-striped is-hoverable is-fullwidth">
                         <thead>
                             <tr>
+                                <th><input type="checkbox" id="check-all"></th>
                                 <th>Número</th>
                                 <th>Fecha</th>
                                 <th>Cliente</th>
@@ -226,7 +187,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         </thead>
                         <tbody id="pending-invoices-body">
                             ${filteredInvoices.map(inv => `
-                                <tr data-company="${inv.company_id}">
+                                <tr data-company="${inv.company_id}" data-id="${inv.id}">
+                                    <td><input type="checkbox" class="invoice-checkbox" data-id="${inv.id}"></td>
                                     <td>${escapeHTML(inv.num || '—')}</td>
                                     <td>${formatDate(inv.fecha || inv.created_at)}</td>
                                     <td>${escapeHTML(inv.cliente || inv.customer_name || '—')}</td>
@@ -239,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         } else {
-            pendingTableHTML = `<div class="has-text-centered has-text-grey py-6">No hay facturas pendientes</div>`;
+            pendingTableHTML = `<div class="has-text-centered has-text-grey py-6"><p class="is-size-5">No hay facturas pendientes</p><p class="has-text-grey-light">Las facturas pendientes aparecerán aquí cuando se creen.</p></div>`;
         }
 
         // Build action buttons
@@ -252,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </button>
                 </div>
                 <div class="control">
-                    <button class="button is-light" id="btn-send-all">
+                    <button class="button is-info" id="btn-send-all">
                         <span class="icon is-small"><span class="icon-send"></span></span>
                         <span>Enviar todas</span>
                     </button>
@@ -266,7 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="container">
                     <h1 class="title">Panel de envío de facturas</h1>
                     ${companySelectorHTML}
-                    ${nextSendHTML}
                     ${okHTML}
                     ${koHTML}
                     <h2 class="subtitle">Facturas pendientes de envío</h2>
@@ -287,7 +248,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function filterAndRenderResults() {
-        // Re-render with filtered data — pendingInvoiceCounts is in scope from renderApp
         const pendingInvoiceCounts = window._processPendingInvoices || [];
         const filtered = getFilteredInvoices(pendingInvoiceCounts);
 
@@ -298,6 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <table class="table is-striped is-hoverable is-fullwidth">
                         <thead>
                             <tr>
+                                <th><input type="checkbox" id="check-all"></th>
                                 <th>Número</th>
                                 <th>Fecha</th>
                                 <th>Cliente</th>
@@ -307,7 +268,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         </thead>
                         <tbody id="pending-invoices-body">
                             ${filtered.map(inv => `
-                                <tr data-company="${inv.company_id}">
+                                <tr data-company="${inv.company_id}" data-id="${inv.id}">
+                                    <td><input type="checkbox" class="invoice-checkbox" data-id="${inv.id}"></td>
                                     <td>${escapeHTML(inv.num || '—')}</td>
                                     <td>${formatDate(inv.fecha || inv.created_at)}</td>
                                     <td>${escapeHTML(inv.cliente || inv.customer_name || '—')}</td>
@@ -320,7 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         } else {
-            pendingTableHTML = `<div class="has-text-centered has-text-grey py-6">No hay facturas pendientes</div>`;
+            pendingTableHTML = `<div class="has-text-centered has-text-grey py-6"><p class="is-size-5">No hay facturas pendientes</p><p class="has-text-grey-light">Las facturas pendientes aparecerán aquí cuando se creen.</p></div>`;
         }
 
         const resultsArea = document.getElementById('results-area');
@@ -336,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </button>
                     </div>
                     <div class="control">
-                        <button class="button is-light" id="btn-send-all">
+                        <button class="button is-info" id="btn-send-all">
                             <span class="icon is-small"><span class="icon-send"></span></span>
                             <span>Enviar todas</span>
                         </button>
@@ -350,21 +312,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- attach event listeners ---
     function attachEventListeners() {
+        // Select all checkbox
+        const checkAll = document.getElementById('check-all');
+        if (checkAll) {
+            checkAll.addEventListener('change', () => {
+                document.querySelectorAll('.invoice-checkbox').forEach(cb => {
+                    cb.checked = checkAll.checked;
+                });
+                updateSendButtons();
+            });
+        }
+
+        // Individual checkboxes
+        document.querySelectorAll('.invoice-checkbox').forEach(cb => {
+            cb.addEventListener('change', updateSendButtons);
+        });
+
         // Send selected button
         const btnSendSelected = document.getElementById('btn-send-selected');
         if (btnSendSelected) {
-            btnSendSelected.addEventListener('click', () => sendInvoices());
+            btnSendSelected.addEventListener('click', () => sendInvoices(true));
         }
 
         // Send all button
         const btnSendAll = document.getElementById('btn-send-all');
         if (btnSendAll) {
-            btnSendAll.addEventListener('click', () => sendInvoices());
+            btnSendAll.addEventListener('click', () => sendInvoices(false));
+        }
+    }
+
+    function updateSendButtons() {
+        const checked = document.querySelectorAll('.invoice-checkbox:checked');
+        const btnSendSelected = document.getElementById('btn-send-selected');
+        if (btnSendSelected) {
+            btnSendSelected.disabled = checked.length === 0;
+            const count = checked.length;
+            btnSendSelected.querySelector('span:last-child').textContent = count > 0
+                ? `Enviar ${count} seleccionada(s)`
+                : 'Enviar seleccionadas';
         }
     }
 
     // --- send invoices ---
-    async function sendInvoices() {
+    async function sendInvoices(selectedOnly) {
         const sendResults = document.getElementById('send-results');
         const btnSendSelected = document.getElementById('btn-send-selected');
         const btnSendAll = document.getElementById('btn-send-all');
@@ -374,7 +364,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnSendAll) btnSendAll.classList.add('is-loading');
 
         try {
-            const data = await apiFetch('/api/process');
+            const body = {};
+            if (selectedOnly) {
+                const checked = Array.from(document.querySelectorAll('.invoice-checkbox:checked'));
+                if (checked.length === 0) {
+                    showToast('Selecciona al menos una factura', 'is-warning');
+                    return;
+                }
+                body.selected = checked.map(cb => {
+                    const tr = cb.closest('tr');
+                    return {
+                        company_id: Number(tr.dataset.company),
+                        invoice_id: Number(tr.dataset.id)
+                    };
+                });
+            }
+            const data = await apiFetch('/api/process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
             const companies = data.companies || {};
 
             let html = '';
@@ -415,6 +424,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 sendResults.innerHTML = html;
                 showToast('Envío completado', 'is-success');
             }
+
+            // Refresh pending list (it will be shorter)
+            const pendingData = await apiFetch('/api/pending');
+            window._processPendingInvoices = Array.isArray(pendingData.pending) ? pendingData.pending : [];
+            filterAndRenderResults();
+
         } catch (err) {
             if (sendResults) {
                 sendResults.innerHTML = `

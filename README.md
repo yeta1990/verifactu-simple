@@ -101,6 +101,35 @@ cd verifactu-api-python
   `pip install -r requirements.txt`
   (Instaladas: *Flask Flask-SQLAlchemy qrcode[pil] pillow*)
 
+### 2b. Ejecutar en background (Linux)
+
+Mantener la aplicación corriendo tras cerrar la terminal:
+
+```bash
+# Activar entorno y lanzar en background
+source venv/bin/activate
+nohup python run.py > verifactu.log 2>&1 &
+
+# Ver logs en tiempo real
+tail -f verifactu.log
+```
+
+**Otras opciones:**
+
+| Herramienta | Comando |
+|-------------|---------|
+| `screen` | `screen -S verifactu` → `python run.py` → `Ctrl+A, D` para desconectar |
+| `tmux` | `tmux new -s verifactu` → `python run.py` → `Ctrl+B, D` para desconectar |
+
+**Gestionar el proceso:**
+```bash
+# Ver si está corriendo
+ps aux \| grep run.py
+
+# Parar la aplicación
+pkill -f "python run.py"
+```
+
 ### 3. Archivo de configuración `verifactu.conf`
 
 | Valor | Tipo | Requerido | Por defecto | Descripción |

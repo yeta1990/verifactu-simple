@@ -127,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <table class="table is-fullwidth is-striped is-hoverable">
                     <thead>
                         <tr>
-                            ${headers.map(h => `<th>${h}</th>`).join('')}
+                            ${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}
                         </tr>
                     </thead>
                     <tbody>
@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tableHTML += '<tr>';
                 headers.forEach(h => {
                     const val = row[h];
-                    tableHTML += `<td>${val !== null && val !== undefined ? String(val) : ''}</td>`;
+                    tableHTML += `<td>${val !== null && val !== undefined ? escapeHtml(String(val)) : ''}</td>`;
                 });
                 tableHTML += '</tr>';
             });

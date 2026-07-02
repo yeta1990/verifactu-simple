@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const html = renderCompany(company) + await renderInvoices(companyId);
         document.getElementById('app').innerHTML = html;
 
+        // Wire edit modal
+        wireEditModal(company);
+
     } catch (err) {
         document.getElementById('app').innerHTML = emptyState('Error al cargar los datos: ' + err.message);
         showToast('Error al cargar la empresa', 'is-danger');
@@ -32,6 +35,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 function renderCompany(company) {
     const fields = [
         { label: 'Nombre',       value: company.name },
+        { label: 'Nombre comercial', value: company.trade_name },
         { label: 'NIF / VAT',    value: company.vat_id },
         { label: 'Dirección',    value: company.address },
         { label: 'Código Postal',value: company.postal_code },
@@ -76,6 +80,104 @@ function renderCompany(company) {
                     <span class="icon"><i class="fas fa-plus"></i></span>
                     <span>Nueva factura</span>
                 </a>
+                <button class="button is-light" id="btn-edit-company">
+                    <span class="icon"><i class="fas fa-edit"></i></span>
+                    <span>Editar empresa</span>
+                </button>
+            </div>
+
+            <div class="modal" id="edit-modal">
+                <div class="modal-background"></div>
+                <div class="modal-card">
+                    <header class="modal-card-head">
+                        <p class="modal-card-title">Editar empresa</p>
+                        <button class="delete" aria-label="close"></button>
+                    </header>
+                    <section class="modal-card-body">
+                        <form id="edit-form">
+                            <div class="field">
+                                <label class="label">Nombre *</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="name" value="${escapeHtml(company.name || '')}" required>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Nombre comercial</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="trade_name" value="${escapeHtml(company.trade_name || '')}" placeholder="Nombre que aparece en la factura (opcional)">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">NIF *</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="vat_id" value="${escapeHtml(company.vat_id || '')}" required>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Dirección</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="address" value="${escapeHtml(company.address || '')}">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Código postal</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="postal_code" value="${escapeHtml(company.postal_code || '')}">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Ciudad</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="city" value="${escapeHtml(company.city || '')}">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Provincia</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="state" value="${escapeHtml(company.state || '')}">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">País</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="country" value="${escapeHtml(company.country || 'ES')}">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Email</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="email" value="${escapeHtml(company.email || '')}">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Teléfono</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="phone" value="${escapeHtml(company.phone || '')}">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Contacto</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="contact" value="${escapeHtml(company.contact || '')}">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">
+                                    <input class="checkbox" type="checkbox" name="test" ${company.test ? 'checked' : ''}>
+                                    Modo prueba
+                                </label>
+                            </div>
+                            <div class="field is-grouped">
+                                <div class="control">
+                                    <button type="submit" class="button is-primary">Guardar cambios</button>
+                                </div>
+                                <div class="control">
+                                    <button type="button" class="button is-light" id="btn-cancel-edit">Cancelar</button>
+                                </div>
+                            </div>
+                        </form>
+                    </section>
+                </div>
             </div>
         </div>
     </section>`;
@@ -159,4 +261,55 @@ async function renderInvoices(companyId) {
             </div>
         </div>
     </section>`;
+}
+
+function wireEditModal(company) {
+    const modal = document.getElementById('edit-modal');
+    if (!modal) return;
+
+    const btnEdit = document.getElementById('btn-edit-company');
+    const btnCancel = document.getElementById('btn-cancel-edit');
+    const btnDelete = modal.querySelector('.delete');
+    const bg = modal.querySelector('.modal-background');
+    const form = document.getElementById('edit-form');
+
+    const close = () => modal.classList.remove('is-active');
+    const open = () => modal.classList.add('is-active');
+
+    if (btnEdit) btnEdit.addEventListener('click', open);
+    if (btnCancel) btnCancel.addEventListener('click', close);
+    if (btnDelete) btnDelete.addEventListener('click', close);
+    if (bg) bg.addEventListener('click', close);
+
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                name: form.name.value,
+                trade_name: form.trade_name.value,
+                vat_id: form.vat_id.value,
+                address: form.address.value,
+                postal_code: form.postal_code.value,
+                city: form.city.value,
+                state: form.state.value,
+                country: form.country.value,
+                email: form.email.value,
+                phone: form.phone.value,
+                contact: form.contact.value,
+                test: form.test.checked
+            };
+            try {
+                await apiFetch(`/api/${company.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                showToast('Empresa actualizada correctamente', 'is-success');
+                close();
+                location.reload();
+            } catch (err) {
+                showToast('Error al actualizar la empresa: ' + err.message, 'is-danger');
+            }
+        });
+    }
 }

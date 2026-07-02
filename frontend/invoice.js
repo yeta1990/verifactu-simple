@@ -6,7 +6,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── State ──────────────────────────────────────────────────────────
     let companies = [];
     let selectedCompanyId = null;
+    let selectedClientId = null;  // null = nuevo cliente
+    let clients = [];
     let lines = []; // {descr, units, price, vat}
+    let searchTimeout = null;
 
     // ── Helpers ────────────────────────────────────────────────────────
     function escHTML(str) {
@@ -56,20 +59,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
             <!-- Section 1: Client data -->
             <h2 class="title is-5">Datos del cliente</h2>
+
+            <!-- Client selector: always a searchable dropdown -->
+            <div class="columns">
+                <div class="column is-6">
+                    <div class="field">
+                        <label class="label">Seleccionar cliente</label>
+                        <div class="control has-icons-left" style="position:relative;">
+                            <input class="input" id="f-client-search" type="text"
+                                   placeholder="Buscar o escribir nombre de cliente…">
+                            <span class="icon is-left" id="client-search-icon" style="display:none;">
+                                <i class="fas fa-check has-text-success"></i>
+                            </span>
+                            <div class="dropdown" id="client-dropdown" style="display:none; z-index:10; position:absolute; top:100%; left:0; right:0; min-width:100%;">
+                                <div class="dropdown-menu" id="client-dropdown-menu"
+                                      style="max-height:200px; overflow-y:auto; border:1px solid #dbdbdb; border-top:none; background:white;">
+                                </div>
+                            </div>
+                        </div>
+                        <p class="help is-size-7 has-text-grey" id="client-hint">
+                            Selecciona un cliente existente o deja vacío para crear uno nuevo
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Client NIF (moved to next row) -->
+            <div class="columns">
+                <div class="column is-4">
+                    <div class="field">
+                        <label class="label">NIF</label>
+                        <div class="control">
+                            <input class="input" id="f-vat_id" type="text" placeholder="B87654321">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr>
+
+            <!-- Client name (always visible, editable for new or selected client) -->
             <div class="columns">
                 <div class="column is-4">
                     <div class="field">
                         <label class="label">Nombre cliente <span class="has-text-danger">*</span></label>
                         <div class="control">
                             <input class="input" id="f-name" type="text" placeholder="Nombre del cliente" required>
-                        </div>
-                    </div>
-                </div>
-                <div class="column is-4">
-                    <div class="field">
-                        <label class="label">NIF</label>
-                        <div class="control">
-                            <input class="input" id="f-vat_id" type="text" placeholder="B87654321">
                         </div>
                     </div>
                 </div>
@@ -324,17 +359,81 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-// ── Pre-fill client fields with company data ────────────────────────
-    function fillClientData(company) {
-        document.getElementById('f-name').value = company?.name || '';
-        document.getElementById('f-vat_id').value = company?.vat_id || '';
-        document.getElementById('f-address').value = company?.address || '';
-        document.getElementById('f-postal_code').value = company?.postal_code || '';
-        document.getElementById('f-city').value = company?.city || '';
-        document.getElementById('f-state').value = company?.state || '';
-        document.getElementById('f-country').value = company?.country || 'ES';
-        document.getElementById('f-email').value = company?.email || '';
+// ── Clear client fields (start fresh for new client) ────────────────
+    function clearClientFields() {
+        selectedClientId = null;
+        document.getElementById('f-name').value = '';
+        document.getElementById('f-vat_id').value = '';
+        document.getElementById('f-address').value = '';
+        document.getElementById('f-postal_code').value = '';
+        document.getElementById('f-city').value = '';
+        document.getElementById('f-state').value = '';
+        document.getElementById('f-country').value = 'ES';
+        document.getElementById('f-email').value = '';
+        const searchInput = document.getElementById('f-client-search');
+        if (searchInput) searchInput.value = '';
+        const icon = document.getElementById('client-search-icon');
+        if (icon) icon.style.display = 'none';
         updateTypeBadge();
+    }
+
+// ── Pre-fill client fields from a saved client record ───────────────
+    function fillClientDataFromClient(client) {
+        selectedClientId = client.id;
+        document.getElementById('f-name').value = client.name || '';
+        document.getElementById('f-vat_id').value = client.vat_id || '';
+        document.getElementById('f-address').value = client.address || '';
+        document.getElementById('f-postal_code').value = client.postal_code || '';
+        document.getElementById('f-city').value = client.city || '';
+        document.getElementById('f-state').value = client.state || '';
+        document.getElementById('f-country').value = client.country || 'ES';
+        document.getElementById('f-email').value = client.email || '';
+        updateTypeBadge();
+    }
+
+// ── Load clients for a company and populate dropdown ────────────────
+    async function loadClients(companyId) {
+        if (!companyId) {
+            clients = [];
+            buildClientDropdown([]);
+            return;
+        }
+        try {
+            clients = await apiFetch('/api/' + companyId + '/clients');
+        } catch (err) {
+            console.error('Error loading clients:', err);
+            clients = [];
+        }
+        buildClientDropdown(clients);
+    }
+
+// ── Build client dropdown based on whether clients exist ────────────
+    function buildClientDropdown(clientList) {
+        const hint = document.getElementById('client-hint');
+        const menu = document.getElementById('client-dropdown-menu');
+        const searchInput = document.getElementById('f-client-search');
+
+        if (clientList.length === 0) {
+            // No clients: show hint, clear dropdown
+            hint.textContent = 'No hay clientes aún — se guardará como nuevo cliente';
+            hint.className = 'help is-size-7 has-text-grey';
+            menu.innerHTML = '<div class="dropdown-item has-text-grey">No hay clientes disponibles</div>';
+            searchInput.placeholder = 'Nuevo cliente — escribe el nombre';
+        } else {
+            // Clients exist: populate dropdown with all clients
+            let html = '';
+            clientList.forEach(c => {
+                const vatPart = c.vat_id ? ' — ' + escHTML(c.vat_id) : '';
+                html += '<div class="dropdown-item" data-client-id="' + c.id + '">'
+                      + escHTML(c.name) + vatPart + '</div>';
+            });
+            menu.innerHTML = html;
+            searchInput.placeholder = 'Buscar cliente existente…';
+            hint.textContent = 'Selecciona un cliente de la lista o deja vacío para crear uno nuevo';
+            hint.className = 'help is-size-7 has-text-grey';
+        }
+
+        selectedClientId = null;
     }
 
     // ── Load companies ─────────────────────────────────────────────────
@@ -359,14 +458,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             select.innerHTML = opts;
 
-            // Pre-select from URL param and fill client data
+            // Pre-select from URL param
             const urlCompanyId = getParam('company_id');
             if (urlCompanyId) {
                 const found = list.find(c => String(c.id) === String(urlCompanyId));
                 if (found) {
                     select.value = found.id;
                     selectedCompanyId = found.id;
-                    fillClientData(found);
+                    // Load clients for this company (starts empty)
+                    loadClients(found.id);
                     // Add visual indicator
                     const badge = document.createElement('span');
                     badge.className = 'tag is-success is-small ml-2';
@@ -387,25 +487,107 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Event: company selection ───────────────────────────────────────
     function bindCompanySelect() {
         const select = document.getElementById('company-select');
-        select.addEventListener('change', () => {
+        select.addEventListener('change', async () => {
             selectedCompanyId = select.value || null;
             // Remove old badge if any
             const old = select.parentNode.querySelector('.tag');
             if (old) old.remove();
 
-            // Pre-fill client data from selected company
-            const list = Array.isArray(companies) ? companies : (companies.items || []);
-            const company = list.find(c => String(c.id) === String(selectedCompanyId));
-            fillClientData(company || null);
+            // Load clients for selected company
+            if (selectedCompanyId) {
+                await loadClients(selectedCompanyId);
+            } else {
+                clients = [];
+                buildClientDropdown([]);
+            }
+
+            // Always clear client fields — never pre-fill with company data
+            clearClientFields();
 
             if (selectedCompanyId) {
                 const badge = document.createElement('span');
                 badge.className = 'tag is-success is-small ml-2';
                 badge.textContent = '✓ Seleccionada';
                 select.parentNode.appendChild(badge);
-            } else {
-                // Clear client fields when no company selected
-                fillClientData(null);
+            }
+        });
+    }
+
+    // ── Event: client search (searchable dropdown) ────────────────────
+    function bindClientSearch() {
+        const input = document.getElementById('f-client-search');
+        const dropdown = document.getElementById('client-dropdown');
+        const menu = document.getElementById('client-dropdown-menu');
+        const icon = document.getElementById('client-search-icon');
+        if (!input) return;
+
+        let searchTimeout = null;
+
+        // Show dropdown on focus
+        input.addEventListener('focus', () => {
+            dropdown.style.display = 'block';
+        });
+
+        // Filter on input
+        input.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            const query = input.value.trim().toLowerCase();
+
+            if (!query) {
+                selectedClientId = null;
+                icon.style.display = 'none';
+                // Re-show all clients
+                buildClientDropdown(clients);
+                return;
+            }
+
+            // Debounce search
+            searchTimeout = setTimeout(() => {
+                const results = clients.filter(c =>
+                    c.name.toLowerCase().includes(query) ||
+                    (c.vat_id && c.vat_id.toLowerCase().includes(query))
+                );
+
+                if (results.length === 0) {
+                    menu.innerHTML = '<div class="dropdown-item has-text-grey">Sin resultados</div>';
+                } else {
+                    let html = '';
+                    results.forEach(c => {
+                        const vatPart = c.vat_id ? ' — ' + escHTML(c.vat_id) : '';
+                        html += '<div class="dropdown-item" data-client-id="' + c.id + '">'
+                              + escHTML(c.name) + vatPart + '</div>';
+                    });
+                    menu.innerHTML = html;
+                }
+                dropdown.style.display = 'block';
+            }, 200);
+        });
+
+        // Handle click on dropdown items
+        menu.addEventListener('click', (e) => {
+            const item = e.target.closest('.dropdown-item');
+            if (!item) return;
+            const clientId = parseInt(item.dataset.clientId);
+            const client = clients.find(c => c.id === clientId);
+            if (client) {
+                fillClientDataFromClient(client);
+                input.value = client.name;
+                dropdown.style.display = 'none';
+                icon.style.display = '';
+            }
+        });
+
+        // Close dropdown on outside click
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#f-client-search') && !e.target.closest('#client-dropdown')) {
+                dropdown.style.display = 'none';
+            }
+        });
+
+        // Close on Escape
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                dropdown.style.display = 'none';
             }
         });
     }
@@ -492,6 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const payload = {
+                client_id: selectedClientId,
                 name: name,
                 vat_id: document.getElementById('f-vat_id').value.trim(),
                 address: document.getElementById('f-address').value.trim(),
@@ -539,8 +722,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Event: clear ───────────────────────────────────────────────────
     function bindClear() {
         document.getElementById('btn-clear').addEventListener('click', () => {
+            clearClientFields();
             document.getElementById('f-name').value = '';
-            document.getElementById('f-vat_id').value = '';
             document.getElementById('f-address').value = '';
             document.getElementById('f-postal_code').value = '';
             document.getElementById('f-city').value = '';
@@ -559,6 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
     app.innerHTML = buildSkeleton();
     loadCompanies();
     bindCompanySelect();
+    bindClientSearch();
     bindAddLine();
     bindLinesTable();
     bindVatIdChange();

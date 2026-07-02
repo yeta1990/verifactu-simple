@@ -44,6 +44,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                         <div class="field">
+                            <label class="label">Nombre comercial</label>
+                            <div class="control">
+                                <input class="input" type="text" name="trade_name" placeholder="Nombre que aparece en la factura (opcional)">
+                            </div>
+                        </div>
+                        <div class="field">
                             <label class="label">NIF *</label>
                             <div class="control">
                                 <input class="input" type="text" name="vat_id" required>
@@ -116,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         </div>
     `;
-    app.insertAdjacentHTML('beforeend', modalHTML);
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
 
     // Fetch and render companies
     async function loadCompanies() {
@@ -168,7 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Open modal
     document.getElementById('btn-new-company').addEventListener('click', () => {
-        openModal('company-modal');
+        const modal = document.getElementById('company-modal');
+        if (modal) modal.classList.add('is-active');
     });
 
     // Cancel button closes modal
@@ -195,6 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const form = e.target;
         const data = {
             name: form.name.value,
+            trade_name: form.trade_name.value,
             vat_id: form.vat_id.value,
             address: form.address.value,
             postal_code: form.postal_code.value,

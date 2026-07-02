@@ -5,16 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Configuración — Veri*Factu</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.3/css/bulma.min.css">
-    <script src="/frontend/app.js"></script>
-    <script src="/frontend/config.js"></script>
 </head>
 <body>
     <div id="app"></div>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('app').innerHTML = navbarHTML('config');
-        });
-    </script>
     <section class="section">
         <div class="container">
             <h1 class="title">Configuración del Sistema</h1>
@@ -129,5 +122,12 @@
             </form>
         </div>
     </section>
+    <script src="/frontend/app.js"></script>
+    <script src="/frontend/config.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('app').innerHTML = navbarHTML('config');
+        });
+    </script>
 </body>
 </html>

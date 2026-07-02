@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from sqlalchemy import desc, update
 from configparser import UNNAMED_SECTION
+from xml.sax.saxutils import escape
 
 from app import db, config_file, time_zone
 from .models import Company, Invoice, InvoiceLine
@@ -54,6 +55,8 @@ class verifactuXML:
         self.url_prod = 'https://www1.agenciatributaria.gob.es/wlpl/TIKE-CONT/ws/SistemaFacturacion/VerifactuSOAP'
         self.url_test = 'https://prewww1.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion/VerifactuSOAP'
 
+        self.time_zone = time_zone if 'time_zone' in globals() else 'Europe/Madrid'
+
         if not self.software_company_name or not self.software_company_nif or not self.software_name or not self.software_id or not self.software_version or not self.software_install_number:
             sys.exit('Software info not found')
 
@@ -72,17 +75,9 @@ class verifactuXML:
                 log_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
 
     def hour_timezone(self):
-        offset = 0
-        if time_zone in ['Europe/Madrid', 'Atlantic/Canary']:
-            year = datetime.now().year
-            last_sunday_march = max(datetime(year, 3, day) for day in range(31, 24, -1) if datetime(year, 3, day).weekday() == 6)
-            last_sunday_october = max(datetime(year, 10, day) for day in range(31, 24, -1) if datetime(year, 10, day).weekday() == 6)
-            now = datetime.now()
-            offset = 2 if last_sunday_march <= now < last_sunday_october else 1
-            if time_zone == 'Atlantic/Canary':
-                offset -= 1
-        now = datetime.now()
-        return now.strftime(f"%Y-%m-%dT%H:%M:%S{('+%02d:00' % offset) if offset >= 0 else ('%02d:00' % offset)}")
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(self.time_zone)
+        return datetime.now(tz).isoformat()
 
     def last_invoice(self, company):
         return db.session.query(Invoice).filter(
@@ -113,7 +108,7 @@ class verifactuXML:
         xml += f'<IDEmisorFactura>{self.cod(company.vat_id)}</IDEmisorFactura>'
         xml += f'<NumSerieFactura>{invoice.get_number_format()}</NumSerieFactura>'
         xml += f'<FechaExpedicionFactura>{self.dt(invoice)}</FechaExpedicionFactura></IDFactura>'
-        xml += f'<NombreRazonEmisor>{company.name}</NombreRazonEmisor>'
+        xml += f'<NombreRazonEmisor>{escape(company.name)}</NombreRazonEmisor>'
 
         if invoice.verifactu_err is not None:
             xml += f'<Subsanacion>S</Subsanacion>'
@@ -151,12 +146,12 @@ class verifactuXML:
                 xml += f'<ImporteRectificacion><BaseRectificada>{self.cur(bi_total)}</BaseRectificada>'
                 xml += f'<CuotaRectificada>{self.cur(tvat_total)}</CuotaRectificada></ImporteRectificacion>'
 
-        xml += f'<DescripcionOperacion>{descr}</DescripcionOperacion>'
+        xml += f'<DescripcionOperacion>{escape(descr)}</DescripcionOperacion>'
 
         if not invoice.vat_id:
             xml += f'<FacturaSinIdentifDestinatarioArt61d>S</FacturaSinIdentifDestinatarioArt61d>'
         else:
-            xml += f'<Destinatarios><IDDestinatario><NombreRazon>{invoice.name}</NombreRazon>'
+            xml += f'<Destinatarios><IDDestinatario><NombreRazon>{escape(invoice.name)}</NombreRazon>'
             xml += f'<NIF>{invoice.vat_id}</NIF></IDDestinatario></Destinatarios>'
 
         xml += f'<Desglose>'
@@ -233,9 +228,9 @@ class verifactuXML:
 
     def sistema_informatico(self):
         return f"""<SistemaInformatico>
-                        <NombreRazon>{self.software_company_name}</NombreRazon>
+                        <NombreRazon>{escape(self.software_company_name)}</NombreRazon>
                         <NIF>{self.software_company_nif}</NIF>
-                        <NombreSistemaInformatico>{self.software_name}</NombreSistemaInformatico>
+                        <NombreSistemaInformatico>{escape(self.software_name)}</NombreSistemaInformatico>
                         <IdSistemaInformatico>{self.software_id}</IdSistemaInformatico>
                         <Version>{self.software_version}</Version>
                         <NumeroInstalacion>{self.software_install_number}</NumeroInstalacion>
@@ -265,6 +260,40 @@ class verifactuXML:
 
         return resp
 
+    def send_selected(self, selected):
+        """Envía solo las facturas indicadas, agrupadas por empresa.
+        `selected` es una lista de dicts: [{company_id, invoice_id}, ...]."""
+        resp = {'companies': {}}
+        by_company = {}
+        for item in selected:
+            try:
+                cid = int(item.get('company_id'))
+                iid = int(item.get('invoice_id'))
+            except (TypeError, ValueError):
+                continue
+            by_company.setdefault(cid, []).append(iid)
+
+        for cid, iids in by_company.items():
+            company = db.session.get(Company, cid)
+            if not company:
+                resp['companies'][cid] = {'error': 'Company not found'}
+                continue
+            nx_send = db.session.query(
+                db.func.strftime('%s', Company.next_send) - db.func.strftime('%s', 'now')
+            ).filter(Company.id == cid).scalar()
+            resp['companies'][cid] = {}
+            if nx_send and nx_send > 0:
+                resp['companies'][cid]['message'] = f'Next send in {nx_send} seconds'
+            else:
+                invoices = db.session.query(Invoice).filter(
+                    Invoice.company_id == cid,
+                    Invoice.id.in_(iids),
+                    Invoice.verifactu_dt.is_(None)
+                ).order_by(Invoice.dt).limit(1000).all()
+                resp['companies'][cid] = self.send(company, invoices)
+
+        return resp
+
     def voided(self, company, invoices):
         return self.send(company, invoices, True)
 
@@ -286,9 +315,10 @@ class verifactuXML:
                             <sum:RegFactuSistemaFacturacion>
                                 <sum:Cabecera>
                                     <ObligadoEmision>
-                                        <NombreRazon>{company.name}</NombreRazon>
+                                        <NombreRazon>{escape(company.name)}</NombreRazon>
                                         <NIF>{self.cod(company.vat_id)}</NIF>
                                     </ObligadoEmision>
+                                    <RemisionVoluntaria>S</RemisionVoluntaria>
                                 </sum:Cabecera>"""
 
         last_map = {}
@@ -362,18 +392,24 @@ class verifactuXML:
             elif dt:
                 verifactu_dt_value = datetime.fromisoformat(dt)
 
-            stmt = update(Invoice).where(Invoice.id == invoice.id).values({
-                'verifactu_dt': verifactu_dt_value,
-                'verifactu_err': cod_error
-            })
             # cod_error is a string from XML; treat "0" or empty as success
             has_error = cod_error is not None and str(cod_error).strip() != '0'
 
+            stmt = update(Invoice).where(Invoice.id == invoice.id).values({
+                'verifactu_err': cod_error,
+            })
+            # Solo las facturas aceptadas se marcan como enviadas (verifactu_dt)
+            # y entran en la cadena (fingerprint). Las rechazadas quedan pendientes
+            # para subsanación (verifactu_err ya queda seteado arriba).
+            if not has_error:
+                stmt = stmt.values({'verifactu_dt': verifactu_dt_value})
             if csv:
                 verifactu_csv = invoice.verifactu_csv + "\n" + csv if invoice.verifactu_csv else csv
                 stmt = stmt.values({'verifactu_csv': verifactu_csv.strip()})
             if timestamp_presentacion:
-                stmt = stmt.values({'fingerprint': self.fingerprint(company, invoice, last_map[invoice.id], verifactu_dt_value.isoformat(), voided)})
+                # Persistir la huella ENVIADA en el XML (invoice.fingerprint, calculada
+                # con el dt local). NO recalcular con el timestamp de la AEAT.
+                stmt = stmt.values({'fingerprint': invoice.fingerprint})
             if not has_error and voided:
                 stmt = stmt.values({'voided': 1})
             db.session.execute(stmt)

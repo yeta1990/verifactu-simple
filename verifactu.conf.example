@@ -1,0 +1,12 @@
+debug = True
+backend_url = http://localhost:8023
+sqlite_path = verifactu.db
+software_company_name = Test
+software_company_nif = 41241C
+software_name = Verifactu
+software_id = sv
+software_version = 1.0
+software_install_number = 00001
+verifactu_log_file = verifactu.log
+verifactu_save_responses = ./responses
+send_mode = test

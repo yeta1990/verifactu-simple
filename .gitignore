@@ -37,3 +37,8 @@ build/
 htmlcov/
 
 docs/_build/
+*.p12
+*.pem
+verifactu.conf
+responses/
+*.db*

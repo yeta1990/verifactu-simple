@@ -353,9 +353,24 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
     doc.setFillColor(...C.green);
     doc.rect(0, 0, pageW, 22, 'F');
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
+    // Nombre comercial (o razón social como fallback) en la barra de cabecera
+    const headerText = String(company.trade_name || company.name || 'Veri*Factu');
+    const maxHeaderW = pageW - 2 * MX - 35; // reserva espacio para "FACTURA" + margen
+    let headerSize = 16;
     doc.setFont('helvetica', 'bold');
-    doc.text('Veri*Factu', MX, 14);
+    do {
+        doc.setFontSize(headerSize);
+        if (doc.getTextWidth(headerText) <= maxHeaderW) break;
+        headerSize -= 1;
+    } while (headerSize > 9);
+    let fittedText = headerText;
+    if (doc.getTextWidth(fittedText) > maxHeaderW) {
+        while (fittedText.length > 0 && doc.getTextWidth(fittedText + '…') > maxHeaderW) {
+            fittedText = fittedText.slice(0, -1);
+        }
+        fittedText += '…';
+    }
+    doc.text(fittedText, MX, 14);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.text('FACTURA', pageW - MX, 14, { align: 'right' });
@@ -379,7 +394,7 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...C.grey);
     const coLines = [
-        company.vat_id ? `NIF/CIF: ${company.vat_id}` : '',
+        company.vat_id ? `NIF: ${company.vat_id}` : '',
         company.address || '',
         [company.postal_code, company.city].filter(Boolean).join(', '),
         company.country && company.country !== 'ES' ? company.country : '',
@@ -398,7 +413,7 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...C.grey);
     const clLines = [
-        inv.vat_id ? `NIF/CIF: ${inv.vat_id}` : '',
+        inv.vat_id ? `NIF: ${inv.vat_id}` : '',
         inv.address || '',
         [inv.postal_code, inv.city].filter(Boolean).join(', '),
         inv.country && inv.country !== 'ES' ? inv.country : '',

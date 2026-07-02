@@ -18,6 +18,7 @@ class Company(db.Model):
     __tablename__ = 'companies'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(25), unique=True, nullable=False)
+    trade_name = db.Column(db.String(50))
     vat_id = db.Column(db.String(25), unique=True, nullable=False)
     address = db.Column(db.String(75))
     postal_code = db.Column(db.String(10))
@@ -49,7 +50,7 @@ class Company(db.Model):
     @staticmethod
     def validate_fields(data, element=None):
         required = ['name', 'vat_id']
-        allowed = ['name', 'vat_id', 'address', 'postal_code', 'city', 'state', 'country', 'email', 'phone', 'contact', 'test']
+        allowed = ['name', 'trade_name', 'vat_id', 'address', 'postal_code', 'city', 'state', 'country', 'email', 'phone', 'contact', 'test']
         return validate_fields(data, required, allowed, element)
 
     def get_url_aeat(self):
@@ -201,6 +202,38 @@ class InvoiceLine(db.Model):
     def validate_fields(data, element=None):
         required = ['descr', 'units', 'price']
         allowed = ['descr', 'units', 'price', 'vat']
+        return validate_fields(data, required, allowed, element)
+
+
+class Client(db.Model):
+    __tablename__ = 'clients'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id', ondelete='CASCADE'), nullable=False)
+    name = db.Column(db.String(50), nullable=False)
+    vat_id = db.Column(db.String(25))
+    address = db.Column(db.String(75))
+    postal_code = db.Column(db.String(10))
+    city = db.Column(db.String(25))
+    state = db.Column(db.String(25))
+    country = db.Column(db.String(2), default='ES')
+    email = db.Column(db.String(50))
+    created = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    company = db.relationship('Company', backref=db.backref('clients', order_by='Client.name'))
+
+    def __repr__(self):
+        return f'<Client {self.name}>'
+
+    def to_dict(self):
+        result = to_dict(self)
+        if self.created:
+            result['created'] = self.created.strftime('%Y-%m-%d %H:%M:%S')
+        return result
+
+    @staticmethod
+    def validate_fields(data, element=None):
+        required = ['name']
+        allowed = ['name', 'vat_id', 'address', 'postal_code', 'city', 'state', 'country', 'email']
         return validate_fields(data, required, allowed, element)
 
 

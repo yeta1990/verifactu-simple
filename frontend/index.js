@@ -28,31 +28,17 @@ async function loadDashboardStats() {
 
     // Card 2 — Pending invoices (total across all companies)
     try {
-        const process = await apiFetch('/api/process');
-        const pending = extractPendingTotal(process);
-        document.getElementById('stat-pending').textContent = pending;
+        const pending = await apiFetch('/api/pending');
+        const count = Array.isArray(pending.pending) ? pending.pending.length : 0;
+        document.getElementById('stat-pending').textContent = count;
     } catch (err) {
-        console.error('Failed to load process data:', err);
+        console.error('Failed to load pending invoices:', err);
         document.getElementById('stat-pending').textContent = '—';
         showToast('Error al cargar facturas pendientes: ' + err.message, 'is-danger');
     }
 
     // Card 3 — Sent today (placeholder)
     document.getElementById('stat-sent-today').textContent = '—';
-}
-
-/**
- * Extract total pending invoices from /api/process response.
- * Handles both flat object and nested company-array structures.
- */
-function extractPendingTotal(processData) {
-    if (Array.isArray(processData)) {
-        return processData.reduce((sum, c) => sum + (c.pending || c.totalPending || 0), 0);
-    }
-    if (processData.companies && Array.isArray(processData.companies)) {
-        return processData.companies.reduce((sum, c) => sum + (c.pending || c.totalPending || 0), 0);
-    }
-    return processData.pending || processData.totalPending || processData.total || 0;
 }
 
 /**
