@@ -304,10 +304,7 @@ function escapeHTML(str) {
 
 /**
  * Generate and download invoice PDF using jsPDF.
- * Layout: A4 single page.
- *   Top-left: issuing company data.
- *   Top-right: client data.
- *   Bottom: items table + totals + QR + payment info.
+ * Layout: A4 with generous spacing, clear visual hierarchy.
  */
 async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
     const { jsPDF } = window.jspdf;
@@ -315,83 +312,131 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
 
     const pageW = 210;
     const pageH = 297;
-    const colW = (pageW - 20) / 2; // 10mm margins, two columns
-    const leftX = 10;
-    const rightX = 10 + colW + 5;
-    const bodyTop = 60;
+    const MX = 15;            // margin X
+    const MY = 12;            // margin Y
+    const contentW = pageW - 2 * MX;
+    const colGap = 8;
+    const colW = (contentW - colGap) / 2;
+    const leftX = MX;
+    const rightX = MX + colW + colGap;
 
-    // ── Colors ──
-    const dark = [40, 40, 40];
-    const grey = [120, 120, 120];
-    const lightGrey = [235, 235, 235];
-    const green = [72, 199, 138];
+    // ── Palette ──
+    const C = {
+        green:     [72, 199, 138],
+        dark:      [33, 37, 41],
+        grey:      [108, 117, 125],
+        lightGrey: [248, 249, 250],
+        midGrey:   [222, 226, 230],
+        white:     [255, 255, 255],
+        bg:        [245, 247, 250],
+    };
 
-    // ── Header bar ──
-    doc.setFillColor(...green);
-    doc.rect(0, 0, pageW, 18, 'F');
+    /** Draw a rounded-ish background box */
+    function box(x, y, w, h, color) {
+        doc.setFillColor(...color);
+        doc.roundedRect(x, y, w, h, 2, 2, 'F');
+    }
+
+    /** Section label (small caps style) */
+    function sectionLabel(text, x, y) {
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...C.green);
+        doc.text(text.toUpperCase(), x, y);
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 1. HEADER BAR
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    doc.setFillColor(...C.green);
+    doc.rect(0, 0, pageW, 22, 'F');
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(14);
+    doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text('Veri*Factu', 12, 12);
-    doc.setFontSize(9);
+    doc.text('Veri*Factu', MX, 14);
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text('Factura', pageW - 12, 12, { align: 'right' });
+    doc.text('FACTURA', pageW - MX, 14, { align: 'right' });
 
-    // ── Company (top-left) ──
-    doc.setTextColor(...dark);
-    doc.setFontSize(11);
+    let y = MY + 24; // cursor after header
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 2. COMPANY + CLIENT side-by-side
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const addrBoxH = 38;
+    box(leftX, y, colW, addrBoxH, C.lightGrey);
+    box(rightX, y, colW, addrBoxH, C.lightGrey);
+
+    // Company
+    sectionLabel('Emisor', leftX + 4, y + 6);
+    doc.setTextColor(...C.dark);
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text(company.name, leftX, 26);
-    doc.setFontSize(8);
+    doc.text(company.name || '', leftX + 4, y + 13);
+    doc.setFontSize(7.5);
     doc.setFont('helvetica', 'normal');
-    const companyLines = [
-        company.vat_id ? `NIF: ${company.vat_id}` : '',
+    doc.setTextColor(...C.grey);
+    const coLines = [
+        company.vat_id ? `NIF/CIF: ${company.vat_id}` : '',
         company.address || '',
-        [company.postal_code, company.city].filter(Boolean).join(' '),
-        company.country !== 'ES' ? company.country : '',
+        [company.postal_code, company.city].filter(Boolean).join(', '),
+        company.country && company.country !== 'ES' ? company.country : '',
         company.email || '',
         company.phone || '',
     ].filter(Boolean);
-    companyLines.forEach((line, i) => doc.text(line, leftX, 32 + i * 5));
+    coLines.forEach((line, i) => doc.text(line, leftX + 4, y + 19 + i * 4.5));
 
-    // ── Client (top-right) ──
+    // Client
+    sectionLabel('Cliente', rightX + 4, y + 6);
+    doc.setTextColor(...C.dark);
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Datos del Cliente', rightX, 26);
-    doc.setFontSize(8);
+    doc.text(inv.name || '', rightX + 4, y + 13);
+    doc.setFontSize(7.5);
     doc.setFont('helvetica', 'normal');
-    const clientLines = [
-        inv.name || '',
-        inv.vat_id ? `NIF: ${inv.vat_id}` : '',
+    doc.setTextColor(...C.grey);
+    const clLines = [
+        inv.vat_id ? `NIF/CIF: ${inv.vat_id}` : '',
         inv.address || '',
-        [inv.postal_code, inv.city].filter(Boolean).join(' '),
-        inv.country !== 'ES' ? inv.country : '',
+        [inv.postal_code, inv.city].filter(Boolean).join(', '),
+        inv.country && inv.country !== 'ES' ? inv.country : '',
         inv.email || '',
     ].filter(Boolean);
-    clientLines.forEach((line, i) => doc.text(line, rightX, 32 + i * 5));
+    clLines.forEach((line, i) => doc.text(line, rightX + 4, y + 19 + i * 4.5));
 
-    // ── Invoice meta ──
-    doc.setDrawColor(...lightGrey);
-    doc.setLineWidth(0.5);
-    doc.line(leftX, 42, pageW - 10, 42);
+    y += addrBoxH + 10;
 
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...dark);
-    doc.text(`Factura: ${inv.number_format}`, leftX, 48);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...grey);
-    doc.text(`Fecha: ${formatDate(inv.dt)}`, leftX, 53);
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 3. INVOICE META (number, date, type, status)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const metaH = 18;
+    box(leftX, y, contentW, metaH, C.lightGrey);
+
     const type = inv.verifactu_type || 'F1';
-    doc.setTextColor(...dark);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Tipo: ${type}`, rightX, 48, { align: 'right' });
-    doc.setTextColor(...grey);
-    doc.setFont('helvetica', 'normal');
-    const statusText = inv.voided ? 'Anulada' : inv.verifactu_dt ? 'Enviada' : 'No enviada';
-    doc.text(`Estado: ${statusText}`, rightX, 53, { align: 'right' });
+    const statusText = inv.voided ? 'Anulada' : inv.verifactu_dt ? 'Enviada a AEAT' : 'Borrador';
 
-    // ── Items table ──
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...C.dark);
+    doc.text(`Factura: ${inv.number_format}`, leftX + 6, y + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...C.grey);
+    doc.text(`Fecha: ${formatDate(inv.dt)}`, leftX + 6, y + 13);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...C.dark);
+    doc.text(`Tipo: ${type}`, rightX + 20, y + 7, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...C.grey);
+    doc.text(`Estado: ${statusText}`, rightX + 20, y + 13, { align: 'right' });
+
+    y += metaH + 10;
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 4. ITEMS TABLE
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    sectionLabel('Detalle', leftX, y - 3);
+
     const tableData = (inv.lines || []).map(line => [
         line.descr || '',
         String(line.units || 0),
@@ -403,85 +448,129 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
     ]);
 
     doc.autoTable({
-        startY: bodyTop,
-        margin: { left: 10, right: 10 },
-        head: [['Descripción', 'Unidades', 'Precio', 'Subtotal', 'IVA%', 'IVA', 'Total']],
-        body: tableData.length > 0 ? tableData : [['Sin líneas', '', '', '', '', '', '']],
-        theme: 'grid',
-        styles: { fontSize: 7, cellPadding: 1.5 },
-        headStyles: { fillColor: green, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        startY: y + 2,
+        margin: { left: MX, right: MX },
+        head: [['Descripción', 'Uds.', 'Precio', 'Base', 'IVA %', 'Cuota IVA', 'Total']],
+        body: tableData.length > 0 ? tableData : [['—', '', '', '', '', '', '']],
+        theme: 'striped',
+        styles: {
+            fontSize: 8,
+            cellPadding: 3,
+            lineColor: C.midGrey,
+            lineWidth: 0.2,
+            textColor: C.dark,
+            valign: 'middle',
+        },
+        headStyles: {
+            fillColor: C.green,
+            textColor: C.white,
+            fontStyle: 'bold',
+            fontSize: 7.5,
+            cellPadding: 3.5,
+        },
+        alternateRowStyles: {
+            fillColor: C.bg,
+        },
         columnStyles: {
-            0: { cellWidth: 45 },
+            0: { cellWidth: 50 },
             1: { halign: 'right', cellWidth: 14 },
             2: { halign: 'right', cellWidth: 22 },
-            3: { halign: 'right', cellWidth: 22 },
-            4: { halign: 'right', cellWidth: 12 },
-            5: { halign: 'right', cellWidth: 22 },
-            6: { halign: 'right', cellWidth: 22, fontStyle: 'bold' },
+            3: { halign: 'right', cellWidth: 24 },
+            4: { halign: 'right', cellWidth: 16 },
+            5: { halign: 'right', cellWidth: 24 },
+            6: { halign: 'right', cellWidth: 24, fontStyle: 'bold' },
         },
-        alternateRowStyles: { fillColor: [245, 245, 245] },
-        didDrawPage: () => {},
     });
 
-    const tableBottom = doc.lastAutoTable.finalY + 5;
+    const tableBottom = doc.lastAutoTable.finalY;
 
-    // ── Totals (right-aligned) ──
-    doc.setFontSize(9);
-    doc.setTextColor(...grey);
-    doc.text('Base imponible', pageW - 12, tableBottom, { align: 'right' });
-    doc.setTextColor(...dark);
-    doc.setFont('helvetica', 'bold');
-    doc.text(formatEUR(inv.bi), pageW - 55, tableBottom, { align: 'right' });
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 5. TOTALS (right side, boxed)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const totalsW = 80;
+    const totalsX = pageW - MX - totalsW;
+    const totalsY = tableBottom + 8;
+    const totalsH = 34;
 
-    doc.setTextColor(...grey);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Cuota IVA', pageW - 12, tableBottom + 6, { align: 'right' });
-    doc.setTextColor(...dark);
-    doc.setFont('helvetica', 'bold');
-    doc.text(formatEUR(inv.tvat), pageW - 55, tableBottom + 6, { align: 'right' });
+    box(totalsX, totalsY, totalsW, totalsH, C.lightGrey);
 
-    doc.setDrawColor(...green);
-    doc.setLineWidth(0.8);
-    doc.line(pageW - 55, tableBottom + 10, pageW - 12, tableBottom + 10);
+    const txLabel = totalsX + 6;
+    const txValue = totalsX + totalsW - 6;
 
-    doc.setFontSize(11);
-    doc.text('Total', pageW - 12, tableBottom + 18, { align: 'right' });
-    doc.text(formatEUR(inv.total), pageW - 55, tableBottom + 18, { align: 'right' });
-
-    // ── Footer: QR + Payment info ──
-    const footerY = tableBottom + 30;
-    const footerH = pageH - footerY - 10;
-
-    // Payment info (left)
     doc.setFontSize(8);
-    doc.setTextColor(...dark);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Forma de pago', leftX, footerY);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...grey);
-    doc.text('Transferencia vía Stripe (pagado)', leftX, footerY + 5);
+    doc.setTextColor(...C.grey);
+    doc.text('Base imponible', txLabel, totalsY + 8);
+    doc.setTextColor(...C.dark);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formatEUR(inv.bi), txValue, totalsY + 8, { align: 'right' });
 
-    // QR (right)
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...C.grey);
+    doc.text('Cuota IVA', txLabel, totalsY + 16);
+    doc.setTextColor(...C.dark);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formatEUR(inv.tvat), txValue, totalsY + 16, { align: 'right' });
+
+    // Separator line
+    doc.setDrawColor(...C.green);
+    doc.setLineWidth(0.6);
+    doc.line(txLabel, totalsY + 21, txValue, totalsY + 21);
+
+    // Total
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...C.dark);
+    doc.text('TOTAL', txLabel, totalsY + 29);
+    doc.text(formatEUR(inv.total), txValue, totalsY + 29, { align: 'right' });
+
+    const sectionAfterTable = totalsY + totalsH + 10;
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 6. FOOTER: Payment info (left) + QR (right)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const footerY = sectionAfterTable;
+    const qrSize = 28;
+    const footerBoxH = qrSize + 16;
+
+    box(leftX, footerY, contentW, footerBoxH, C.lightGrey);
+
+    // Payment info
+    sectionLabel('Forma de pago', leftX + 6, footerY + 8);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...C.dark);
+    doc.text('Transferencia bancaria vía Stripe', leftX + 6, footerY + 15);
+    doc.setTextColor(...C.grey);
+    doc.setFontSize(7);
+    doc.text('Pagado', leftX + 6, footerY + 21);
+
+    // QR code
     try {
         const imgData = await fetch(qrSrc).then(r => r.arrayBuffer());
         const qrBase64 = arrayBufferToBase64(imgData);
-        doc.addImage(qrBase64, 'PNG', rightX - 20, footerY - 2, 30, 30);
+        const qrX = pageW - MX - qrSize - 6;
+        const qrY = footerY + (footerBoxH - qrSize) / 2;
+        doc.addImage(qrBase64, 'PNG', qrX, qrY, qrSize, qrSize);
         doc.setFontSize(6);
-        doc.setTextColor(...grey);
-        doc.text('Escanea para verificar', rightX - 20, footerY + 35, { align: 'center' });
+        doc.setTextColor(...C.grey);
+        doc.text('Verificar en AEAT', qrX + qrSize / 2, qrY + qrSize + 4, { align: 'center' });
     } catch (e) {
         doc.setFontSize(7);
-        doc.setTextColor(...grey);
-        doc.text('QR no disponible', rightX - 20, footerY + 10, { align: 'center' });
+        doc.setTextColor(...C.grey);
+        doc.text('QR no disponible', pageW - MX - 30, footerY + footerBoxH / 2);
     }
 
-    // ── Page bottom line ──
-    doc.setDrawColor(...lightGrey);
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 7. PAGE BOTTOM
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    doc.setDrawColor(...C.midGrey);
     doc.setLineWidth(0.3);
-    doc.line(10, pageH - 10, pageW - 10, pageH - 10);
+    doc.line(MX, pageH - 12, pageW - MX, pageH - 12);
     doc.setFontSize(6);
-    doc.setTextColor(...grey);
-    doc.text('Documento generado por Veri*Factu', 12, pageH - 5);
+    doc.setTextColor(...C.grey);
+    doc.text('Documento generado por Veri*Factu', MX, pageH - 7);
+    doc.text(`${formatDate(new Date().toISOString())}`, pageW - MX, pageH - 7, { align: 'right' });
 
     doc.save(`factura_${inv.number_format}.pdf`);
 }
