@@ -324,6 +324,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+// ── Pre-fill client fields with company data ────────────────────────
+    function fillClientData(company) {
+        document.getElementById('f-name').value = company?.name || '';
+        document.getElementById('f-vat_id').value = company?.vat_id || '';
+        document.getElementById('f-address').value = company?.address || '';
+        document.getElementById('f-postal_code').value = company?.postal_code || '';
+        document.getElementById('f-city').value = company?.city || '';
+        document.getElementById('f-state').value = company?.state || '';
+        document.getElementById('f-country').value = company?.country || 'ES';
+        document.getElementById('f-email').value = company?.email || '';
+        updateTypeBadge();
+    }
+
     // ── Load companies ─────────────────────────────────────────────────
     async function loadCompanies() {
         const wrapper = document.getElementById('company-select-wrapper');
@@ -331,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             companies = await apiFetch('/api/companies');
-            // companies may be an array or { items: [...], ... } — handle both
+            // companies may be an array or { items: [...], ...} — handle both
             const list = Array.isArray(companies) ? companies : (companies.items || []);
 
             // Clear placeholder
@@ -341,21 +354,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let opts = '<option value="">— Seleccionar empresa —</option>';
             list.forEach(c => {
-                const id = c.id || c.company_id || c.name;
                 const name = c.name || 'Empresa sin nombre';
-                const cid = c.id != null ? c.id : (c.company_id != null ? c.company_id : name);
-                opts += `<option value="${cid}">${escHTML(name)}</option>`;
+                opts += `<option value="${c.id}">${escHTML(name)}</option>`;
             });
             select.innerHTML = opts;
 
-            // Pre-select from URL param
+            // Pre-select from URL param and fill client data
             const urlCompanyId = getParam('company_id');
             if (urlCompanyId) {
-                // Find matching company
                 const found = list.find(c => String(c.id) === String(urlCompanyId));
                 if (found) {
                     select.value = found.id;
                     selectedCompanyId = found.id;
+                    fillClientData(found);
                     // Add visual indicator
                     const badge = document.createElement('span');
                     badge.className = 'tag is-success is-small ml-2';
@@ -381,11 +392,20 @@ document.addEventListener('DOMContentLoaded', () => {
             // Remove old badge if any
             const old = select.parentNode.querySelector('.tag');
             if (old) old.remove();
+
+            // Pre-fill client data from selected company
+            const list = Array.isArray(companies) ? companies : (companies.items || []);
+            const company = list.find(c => String(c.id) === String(selectedCompanyId));
+            fillClientData(company || null);
+
             if (selectedCompanyId) {
                 const badge = document.createElement('span');
                 badge.className = 'tag is-success is-small ml-2';
                 badge.textContent = '✓ Seleccionada';
                 select.parentNode.appendChild(badge);
+            } else {
+                // Clear client fields when no company selected
+                fillClientData(null);
             }
         });
     }

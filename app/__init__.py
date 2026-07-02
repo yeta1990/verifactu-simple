@@ -92,6 +92,14 @@ def get_invoices(company_id):
     return jsonify([invoice.to_dict() for invoice in Invoice.query.filter_by(company_id=company_id).order_by(Invoice.dt).all()])
 
 
+@app.route('/api/<int:company_id>', methods=['GET'])
+def get_company(company_id):
+    company = Company.query.get(company_id)
+    if company is None:
+        return jsonify({'error': 'Not found'}), HTTPStatus.NOT_FOUND
+    return jsonify(company.to_dict())
+
+
 @app.route('/api/<int:company_id>/invoices/<int:id>', methods=['GET'])
 def get_invoice(company_id, id):
     invoice = Invoice.query.filter_by(id=id, company_id=company_id).first()

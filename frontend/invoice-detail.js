@@ -16,15 +16,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function fetchInvoice(companyId, invoiceId) {
     try {
-        const invoice = await apiFetch(`/api/${companyId}/invoices/${invoiceId}`);
-        renderInvoice(companyId, invoice);
+        const [invoice, company] = await Promise.all([
+            apiFetch(`/api/${companyId}/invoices/${invoiceId}`),
+            apiFetch(`/api/${companyId}`),
+        ]);
+        renderInvoice(companyId, invoiceId, invoice, company);
     } catch (err) {
         document.getElementById('app').innerHTML = navbarHTML('companies') +
             `<section class="section"><div class="container"><div class="notification is-danger">Error loading invoice: ${err.message}</div></div></section>`;
     }
 }
 
-function renderInvoice(companyId, inv) {
+function renderInvoice(companyId, invoiceId, inv, company) {
     const app = document.getElementById('app');
 
     // Status badge
@@ -119,18 +122,29 @@ function renderInvoice(companyId, inv) {
     // QR Code
     const qrSrc = `/api/${companyId}/invoices/${invoiceId}/qr`;
 
+    // Company address line
+    const companyAddr = [company.address, company.postal_code, company.city, company.country]
+        .filter(Boolean).join(', ');
+
     const html = `
     <section class="section">
         <div class="container">
             <!-- Header -->
             <div class="mb-5">
                 <a href="/frontend/invoice.html?company_id=${companyId}" class="button is-small is-light mb-3">← Volver</a>
-                <div class="is-flex is-align-items-center is-flex-wrap-wrap">
-                    <h1 class="is-size-2">Factura ${escapeHTML(inv.number_format)}</h1>
-                    <span class="tag ${type === 'F1' || type === 'F3' ? 'is-info' : type === 'F2' ? 'is-warning' : type === 'R1' || type === 'R5' ? 'is-dark' : 'is-light'}">${escapeHTML(type || '—')}</span>
-                    <span class="tag is-light">${formatDate(inv.dt)}</span>
+                <div class="is-flex is-align-items-center is-flex-wrap-wrap is-justify-content-space-between">
+                    <div>
+                        <h1 class="is-size-2">Factura ${escapeHTML(inv.number_format)}</h1>
+                        ${invoiceRefHTML}
+                    </div>
+                    <button class="button is-primary is-small" id="downloadPdfBtn" style="white-space:nowrap;">
+                        ⬇ Descargar PDF
+                    </button>
                 </div>
-                ${invoiceRefHTML}
+                <div class="is-flex mt-2">
+                    <span class="tag ${type === 'F1' || type === 'F3' ? 'is-info' : type === 'F2' ? 'is-warning' : type === 'R1' || type === 'R5' ? 'is-dark' : 'is-light'}">${escapeHTML(type || '—')}</span>
+                    <span class="tag is-light ml-2">${formatDate(inv.dt)}</span>
+                </div>
             </div>
 
             <!-- Status -->
@@ -211,6 +225,14 @@ function renderInvoice(companyId, inv) {
 
     // Attach event listeners
     attachActionHandlers(companyId, invoiceId, inv);
+
+    // Download PDF button
+    const pdfBtn = document.getElementById('downloadPdfBtn');
+    if (pdfBtn) {
+        pdfBtn.addEventListener('click', () => {
+            generatePdf(companyId, invoiceId, inv, company, qrSrc);
+        });
+    }
 }
 
 function attachActionHandlers(companyId, invoiceId, inv) {
@@ -278,4 +300,199 @@ function escapeHTML(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+}
+
+/**
+ * Generate and download invoice PDF using jsPDF.
+ * Layout: A4 single page.
+ *   Top-left: issuing company data.
+ *   Top-right: client data.
+ *   Bottom: items table + totals + QR + payment info.
+ */
+async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+    const pageW = 210;
+    const pageH = 297;
+    const colW = (pageW - 20) / 2; // 10mm margins, two columns
+    const leftX = 10;
+    const rightX = 10 + colW + 5;
+    const bodyTop = 60;
+
+    // ── Colors ──
+    const dark = [40, 40, 40];
+    const grey = [120, 120, 120];
+    const lightGrey = [235, 235, 235];
+    const green = [72, 199, 138];
+
+    // ── Header bar ──
+    doc.setFillColor(...green);
+    doc.rect(0, 0, pageW, 18, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Veri*Factu', 12, 12);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Factura', pageW - 12, 12, { align: 'right' });
+
+    // ── Company (top-left) ──
+    doc.setTextColor(...dark);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(company.name, leftX, 26);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    const companyLines = [
+        company.vat_id ? `NIF: ${company.vat_id}` : '',
+        company.address || '',
+        [company.postal_code, company.city].filter(Boolean).join(' '),
+        company.country !== 'ES' ? company.country : '',
+        company.email || '',
+        company.phone || '',
+    ].filter(Boolean);
+    companyLines.forEach((line, i) => doc.text(line, leftX, 32 + i * 5));
+
+    // ── Client (top-right) ──
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Datos del Cliente', rightX, 26);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    const clientLines = [
+        inv.name || '',
+        inv.vat_id ? `NIF: ${inv.vat_id}` : '',
+        inv.address || '',
+        [inv.postal_code, inv.city].filter(Boolean).join(' '),
+        inv.country !== 'ES' ? inv.country : '',
+        inv.email || '',
+    ].filter(Boolean);
+    clientLines.forEach((line, i) => doc.text(line, rightX, 32 + i * 5));
+
+    // ── Invoice meta ──
+    doc.setDrawColor(...lightGrey);
+    doc.setLineWidth(0.5);
+    doc.line(leftX, 42, pageW - 10, 42);
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...dark);
+    doc.text(`Factura: ${inv.number_format}`, leftX, 48);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...grey);
+    doc.text(`Fecha: ${formatDate(inv.dt)}`, leftX, 53);
+    const type = inv.verifactu_type || 'F1';
+    doc.setTextColor(...dark);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Tipo: ${type}`, rightX, 48, { align: 'right' });
+    doc.setTextColor(...grey);
+    doc.setFont('helvetica', 'normal');
+    const statusText = inv.voided ? 'Anulada' : inv.verifactu_dt ? 'Enviada' : 'No enviada';
+    doc.text(`Estado: ${statusText}`, rightX, 53, { align: 'right' });
+
+    // ── Items table ──
+    const tableData = (inv.lines || []).map(line => [
+        line.descr || '',
+        String(line.units || 0),
+        formatEUR(line.price),
+        formatEUR(line.bi),
+        `${line.vat || 0}%`,
+        formatEUR(line.tvat),
+        formatEUR(line.total),
+    ]);
+
+    doc.autoTable({
+        startY: bodyTop,
+        margin: { left: 10, right: 10 },
+        head: [['Descripción', 'Unidades', 'Precio', 'Subtotal', 'IVA%', 'IVA', 'Total']],
+        body: tableData.length > 0 ? tableData : [['Sin líneas', '', '', '', '', '', '']],
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1.5 },
+        headStyles: { fillColor: green, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        columnStyles: {
+            0: { cellWidth: 45 },
+            1: { halign: 'right', cellWidth: 14 },
+            2: { halign: 'right', cellWidth: 22 },
+            3: { halign: 'right', cellWidth: 22 },
+            4: { halign: 'right', cellWidth: 12 },
+            5: { halign: 'right', cellWidth: 22 },
+            6: { halign: 'right', cellWidth: 22, fontStyle: 'bold' },
+        },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        didDrawPage: () => {},
+    });
+
+    const tableBottom = doc.lastAutoTable.finalY + 5;
+
+    // ── Totals (right-aligned) ──
+    doc.setFontSize(9);
+    doc.setTextColor(...grey);
+    doc.text('Base imponible', pageW - 12, tableBottom, { align: 'right' });
+    doc.setTextColor(...dark);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formatEUR(inv.bi), pageW - 55, tableBottom, { align: 'right' });
+
+    doc.setTextColor(...grey);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Cuota IVA', pageW - 12, tableBottom + 6, { align: 'right' });
+    doc.setTextColor(...dark);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formatEUR(inv.tvat), pageW - 55, tableBottom + 6, { align: 'right' });
+
+    doc.setDrawColor(...green);
+    doc.setLineWidth(0.8);
+    doc.line(pageW - 55, tableBottom + 10, pageW - 12, tableBottom + 10);
+
+    doc.setFontSize(11);
+    doc.text('Total', pageW - 12, tableBottom + 18, { align: 'right' });
+    doc.text(formatEUR(inv.total), pageW - 55, tableBottom + 18, { align: 'right' });
+
+    // ── Footer: QR + Payment info ──
+    const footerY = tableBottom + 30;
+    const footerH = pageH - footerY - 10;
+
+    // Payment info (left)
+    doc.setFontSize(8);
+    doc.setTextColor(...dark);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Forma de pago', leftX, footerY);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...grey);
+    doc.text('Transferencia vía Stripe (pagado)', leftX, footerY + 5);
+
+    // QR (right)
+    try {
+        const imgData = await fetch(qrSrc).then(r => r.arrayBuffer());
+        const qrBase64 = arrayBufferToBase64(imgData);
+        doc.addImage(qrBase64, 'PNG', rightX - 20, footerY - 2, 30, 30);
+        doc.setFontSize(6);
+        doc.setTextColor(...grey);
+        doc.text('Escanea para verificar', rightX - 20, footerY + 35, { align: 'center' });
+    } catch (e) {
+        doc.setFontSize(7);
+        doc.setTextColor(...grey);
+        doc.text('QR no disponible', rightX - 20, footerY + 10, { align: 'center' });
+    }
+
+    // ── Page bottom line ──
+    doc.setDrawColor(...lightGrey);
+    doc.setLineWidth(0.3);
+    doc.line(10, pageH - 10, pageW - 10, pageH - 10);
+    doc.setFontSize(6);
+    doc.setTextColor(...grey);
+    doc.text('Documento generado por Veri*Factu', 12, pageH - 5);
+
+    doc.save(`factura_${inv.number_format}.pdf`);
+}
+
+/** Convert ArrayBuffer to base64 for jsPDF addImage */
+function arrayBufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
 }

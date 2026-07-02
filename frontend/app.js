@@ -55,6 +55,18 @@ function showToast(message, type = 'is-info') {
 })();
 
 /**
+ * Escape HTML special characters to prevent XSS.
+ * @param {string} str - Raw string
+ * @returns {string} Escaped HTML
+ */
+function escapeHtml(str) {
+    if (str == null) return '';
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(String(str)));
+    return div.innerHTML;
+}
+
+/**
  * Open a Bulma modal. Returns a reference to the modal element.
  * @param {string} title - Modal title
  * @param {string} bodyHTML - Inner HTML for modal-content
