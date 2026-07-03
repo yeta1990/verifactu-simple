@@ -1,14 +1,37 @@
 // Veri*Factu — Dashboard page logic
 
-document.addEventListener('DOMContentLoaded', () => {
-    // Inject navbar
+document.addEventListener('DOMContentLoaded', async () => {
+    // Load companies for navbar selector
+    let companies = [];
+    try {
+        companies = await apiFetch('/api/companies');
+    } catch (err) {
+        console.error('Failed to load companies for navbar:', err);
+    }
+    const selectedId = getSelectedCompany();
+
+    // Inject navbar with company selector
     const navbarPlaceholder = document.getElementById('navbar-placeholder');
     if (navbarPlaceholder) {
-        navbarPlaceholder.innerHTML = navbarHTML('dashboard');
+        navbarPlaceholder.innerHTML = navbarHTML('dashboard', companies, selectedId ? parseInt(selectedId) : null);
     }
 
     loadDashboardStats();
     renderRecentActivity();
+
+    // New invoice button — redirect with selected company
+    const btnNewInvoice = document.getElementById('btn-new-invoice');
+    if (btnNewInvoice) {
+        btnNewInvoice.addEventListener('click', (e) => {
+            e.preventDefault();
+            const companyId = getSelectedCompany();
+            if (companyId) {
+                window.location.href = `/frontend/invoice.html?company_id=${companyId}`;
+            } else {
+                window.location.href = '/frontend/invoice.html';
+            }
+        });
+    }
 });
 
 /**

@@ -140,16 +140,85 @@ function getParam(name) {
     return p.get(name);
 }
 
+// ── Company persistence (localStorage) ──────────────────────────────────
+
+const STORAGE_KEY = 'verifactu_selected_company';
+
+/**
+ * Get the currently selected company ID from localStorage.
+ * @returns {string|null}
+ */
+function getSelectedCompany() {
+    return localStorage.getItem(STORAGE_KEY);
+}
+
+/**
+ * Save a company ID as the selected (default) company.
+ * @param {string|number} companyId
+ */
+function setSelectedCompany(companyId) {
+    if (companyId) {
+        localStorage.setItem(STORAGE_KEY, String(companyId));
+    } else {
+        localStorage.removeItem(STORAGE_KEY);
+    }
+}
+
+/**
+ * Build the company selector dropdown with options already embedded.
+ * @param {Array<{id: number,name:string}>|null} companies - companies list (or null for empty)
+ * @param {number|null} selectedId
+ * @returns {string}
+ */
+function companySelectorHTML(companies, selectedId = null) {
+    selectedId = selectedId ? String(selectedId) : null;
+    const opts = (companies || []).map(c => {
+        const name = c.name || 'Empresa sin nombre';
+        const sel = String(c.id) === selectedId ? ' selected' : '';
+        return `<option value="${c.id}"${sel}>${escapeHtml(name)}</option>`;
+    }).join('');
+
+    return `
+        <div class="navbar-item">
+            <div class="control">
+                <div class="select is-small is-fullwidth">
+                    <select onchange="onNavbarCompanyChange(this.value)">
+                        <option value="">🏢 Empresa…</option>
+                        ${opts}
+                    </select>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Called when navbar company selector changes.
+ * Saves to localStorage and navigates to invoices page.
+ * @param {string} companyId
+ */
+function onNavbarCompanyChange(companyId) {
+    if (companyId) {
+        setSelectedCompany(companyId);
+        window.location.href = `/frontend/invoices.html?company_id=${companyId}`;
+    } else {
+        setSelectedCompany(null);
+    }
+}
+
 /**
  * Build the shared navbar HTML.
  * @param {string} activePage - current page identifier (e.g. 'dashboard', 'companies')
+ * @param {Array<{id: number,name:string}>|null} companies - companies list for selector
+ * @param {number|null} selectedId - pre-selected company ID
  * @returns {string}
  */
-function navbarHTML(activePage = '') {
+function navbarHTML(activePage = '', companies = null, selectedId = null) {
     const logo = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 50'%3E%3Ctext x='5' y='36' font-family='Arial sans-serif' font-size='32' font-weight='bold' fill='%23ffffff'%3EVeri%3C/tex%3E%3Ctext x='55' y='36' font-family='Arial sans-serif' font-size='32' font-weight='bold' fill='%2348c78a'%3E%2A%3C/text%3E%3Ctext x='65' y='36' font-family='Arial sans-serif' font-size='32' font-weight='bold' fill='%23ffffff'%3EFactu%3C/text%3E%3C/svg%3E";
     const pages = [
         { id: 'dashboard',     label: 'Dashboard',     href: '/' },
         { id: 'companies',     label: 'Empresas',      href: '/frontend/companies.html' },
+        { id: 'invoices',      label: 'Facturas',      href: '/frontend/invoices.html' },
         { id: 'process',       label: 'Envío',         href: '/frontend/process.html' },
         { id: 'query',         label: 'Consulta AEAT', href: '/frontend/query.html' },
         { id: 'config',        label: 'Configuración',  href: '/frontend/config.html' },
@@ -170,6 +239,9 @@ function navbarHTML(activePage = '') {
                 ${pages.map(p => `
                     <a class="navbar-item ${p.id === activePage ? 'is-active' : ''}" href="${p.href}">${p.label}</a>
                 `).join('')}
+            </div>
+            <div class="navbar-end">
+                ${companySelectorHTML(companies, selectedId)}
             </div>
         </div>
     </nav>`;

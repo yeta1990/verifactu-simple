@@ -1,8 +1,17 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const app = document.getElementById('app');
 
-    // Navbar
-    app.innerHTML = navbarHTML('companies');
+    // Load companies for navbar selector
+    let companies = [];
+    try {
+        companies = await apiFetch('/api/companies');
+    } catch (err) {
+        console.error('Error loading companies for navbar:', err);
+    }
+    const selectedId = getSelectedCompany();
+
+    // Navbar (companies already loaded above, pass them directly)
+    app.innerHTML = navbarHTML('companies', companies, selectedId ? parseInt(selectedId) : null);
 
     // Content section
     app.innerHTML += `
@@ -142,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${escapeHtml(company.country)}</td>
                     <td>${escapeHtml(company.phone || '—')}</td>
                     <td>
-                        <a href="company.html?id=${company.id}">Ver</a>
+                        <a href="#" class="btn-view-company" data-id="${company.id}">Ver</a>
                     </td>
                 </tr>
             `).join('');
@@ -171,6 +180,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     loadCompanies();
+
+    // View company buttons — save as selected and navigate
+    document.getElementById('companies-table').addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-view-company');
+        if (btn) {
+            const id = btn.dataset.id;
+            setSelectedCompany(id);
+            window.location.href = `company.html?id=${id}`;
+        }
+    });
 
     // Open modal
     document.getElementById('btn-new-company').addEventListener('click', () => {
@@ -226,6 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
             modal.classList.remove('is-active');
             form.reset();
             form.test.checked = true;
+            setSelectedCompany(result.id);
             window.location.href = `company.html?id=${result.id}`;
         } catch (err) {
             showToast('Error al crear la empresa: ' + err.message, 'is-danger');

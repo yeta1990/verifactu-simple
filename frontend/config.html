@@ -125,8 +125,11 @@
     <script src="/frontend/app.js"></script>
     <script src="/frontend/config.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('app').innerHTML = navbarHTML('config');
+        document.addEventListener('DOMContentLoaded', async () => {
+            let companies = [];
+            try { companies = await apiFetch('/api/companies'); } catch(e) {}
+            const sel = getSelectedCompany();
+            document.getElementById('app').innerHTML = navbarHTML('config', companies, sel ? parseInt(sel) : null);
         });
     </script>
 </body>

@@ -1,6 +1,6 @@
 // Veri*Factu — Invoice Creation Page
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const app = document.getElementById('app');
 
     // ── State ──────────────────────────────────────────────────────────
@@ -22,10 +22,38 @@ document.addEventListener('DOMContentLoaded', () => {
         return i + 1;
     }
 
+    // ── Load companies first (before rendering) ────────────────────────
+    try {
+        companies = await apiFetch('/api/companies');
+        const list = Array.isArray(companies) ? companies : (companies.items || []);
+
+        // Determine selected company: URL param > localStorage > first
+        const urlCompanyId = getParam('company_id');
+        const savedCompanyId = getSelectedCompany();
+
+        if (urlCompanyId) {
+            const found = list.find(c => String(c.id) === String(urlCompanyId));
+            if (found) {
+                selectedCompanyId = found.id;
+                setSelectedCompany(found.id);
+            }
+        } else if (savedCompanyId) {
+            const found = list.find(c => String(c.id) === String(savedCompanyId));
+            if (found) {
+                selectedCompanyId = found.id;
+            }
+        } else if (list.length > 0) {
+            selectedCompanyId = list[0].id;
+            setSelectedCompany(list[0].id);
+        }
+    } catch (err) {
+        console.error('Error loading companies:', err);
+    }
+
     // ── Build page skeleton ────────────────────────────────────────────
     function buildSkeleton() {
         return `
-    ${navbarHTML('')}
+    ${navbarHTML('', companies, selectedCompanyId)}
 
     <section class="section">
         <div class="container">
@@ -445,21 +473,29 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             select.innerHTML = opts;
 
-            // Pre-select from URL param
+            // Pre-select priority: URL param > localStorage > first company
+            let preselected = null;
             const urlCompanyId = getParam('company_id');
+            const savedCompanyId = getSelectedCompany();
+
             if (urlCompanyId) {
-                const found = list.find(c => String(c.id) === String(urlCompanyId));
-                if (found) {
-                    select.value = found.id;
-                    selectedCompanyId = found.id;
-                    // Load clients for this company (starts empty)
-                    loadClients(found.id);
-                    // Add visual indicator
-                    const badge = document.createElement('span');
-                    badge.className = 'tag is-success is-small ml-2';
-                    badge.textContent = '✓ Seleccionada';
-                    select.parentNode.appendChild(badge);
-                }
+                preselected = list.find(c => String(c.id) === String(urlCompanyId));
+            } else if (savedCompanyId) {
+                preselected = list.find(c => String(c.id) === String(savedCompanyId));
+            }
+
+            if (preselected) {
+                select.value = preselected.id;
+                selectedCompanyId = preselected.id;
+                // Save to localStorage for future use
+                setSelectedCompany(preselected.id);
+                // Load clients for this company
+                loadClients(preselected.id);
+                // Add visual indicator
+                const badge = document.createElement('span');
+                badge.className = 'tag is-success is-small ml-2';
+                badge.textContent = '✓ Seleccionada';
+                select.parentNode.appendChild(badge);
             }
 
             // Enable select
@@ -476,6 +512,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const select = document.getElementById('company-select');
         select.addEventListener('change', async () => {
             selectedCompanyId = select.value || null;
+            // Save to localStorage
+            if (selectedCompanyId) {
+                setSelectedCompany(selectedCompanyId);
+            }
             // Remove old badge if any
             const old = select.parentNode.querySelector('.tag');
             if (old) old.remove();
@@ -667,7 +707,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Init ───────────────────────────────────────────────────────────
     app.innerHTML = buildSkeleton();
-    loadCompanies();
+
+    // If a company is pre-selected, load its clients
+    if (selectedCompanyId) {
+        loadClients(selectedCompanyId);
+    }
+
     bindCompanySelect();
     bindClientSelect();
     bindAddLine();

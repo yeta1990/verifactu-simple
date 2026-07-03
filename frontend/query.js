@@ -1,12 +1,21 @@
 // Veri*Factu — AEAT Query page
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const app = document.getElementById('app');
     if (!app) return;
 
+    // Load companies for navbar selector
+    let companies = [];
+    try {
+        companies = await apiFetch('/api/companies');
+    } catch (err) {
+        console.error('Error loading companies for navbar:', err);
+    }
+    const selectedId = getSelectedCompany();
+
     // --- Build page ---
     app.innerHTML = `
-        ${navbarHTML('query')}
+        ${navbarHTML('query', companies, selectedId ? parseInt(selectedId) : null)}
 
         <section class="section">
             <div class="container">
@@ -82,20 +91,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Load companies ---
-    let companies = [];
-    apiFetch('/api/companies')
-        .then(data => {
-            companies = Array.isArray(data) ? data : (data.items || []);
-            companies.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = c.name || c.id;
-                companySelect.appendChild(opt);
-            });
-        })
-        .catch(err => {
-            showToast('Error al cargar empresas: ' + err.message, 'is-danger');
-        });
+    companies.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.name || c.id;
+        companySelect.appendChild(opt);
+    });
 
     // --- Consultar handler ---
     btnConsultar.addEventListener('click', async () => {

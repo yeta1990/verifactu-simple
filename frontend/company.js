@@ -1,8 +1,6 @@
 // Veri*Factu — Company Detail page
 
 document.addEventListener('DOMContentLoaded', async () => {
-    document.getElementById('navbar').innerHTML = navbarHTML('companies');
-
     const companyId = getParam('id');
     if (!companyId) {
         document.getElementById('app').innerHTML = emptyState('No se ha especificado una empresa.');
@@ -19,8 +17,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        // Save as selected company
+        setSelectedCompany(companyId);
+
         // Render company detail + invoices
-        const html = renderCompany(company) + await renderInvoices(companyId);
+        // Render company detail + invoices
+        const html = renderCompany(company, companyId, companies) + await renderInvoices(companyId);
         document.getElementById('app').innerHTML = html;
 
         // Wire edit modal
@@ -32,7 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-function renderCompany(company) {
+function renderCompany(company, companyId, companies) {
     const fields = [
         { label: 'Nombre',       value: company.name },
         { label: 'Nombre comercial', value: company.trade_name },
@@ -61,6 +63,7 @@ function renderCompany(company) {
     `).join('');
 
     return `
+    ${navbarHTML('companies', companies || [], parseInt(companyId))}
     <section class="section">
         <div class="container">
             <p class="mb-3">

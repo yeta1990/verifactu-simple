@@ -1,7 +1,16 @@
 // Veri*Factu — Process / Send page
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const app = document.getElementById('app');
     if (!app) return;
+
+    // Load companies ONCE - used for navbar AND for filtering
+    let companies = [];
+    try {
+        companies = await apiFetch('/api/companies');
+    } catch (err) {
+        console.error('Error loading companies:', err);
+    }
+    const selectedId = getSelectedCompany();
 
     // --- helpers ---
     function render(html) {
@@ -17,21 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- initial skeleton ---
-    render(`
-        ${navbarHTML('process')}
-        <section class="section">
-            <div class="container">
-                <h1 class="title">Panel de envío de facturas</h1>
-                <div id="loading" class="has-text-centered py-6">
-                    <span class="loader is-loading"></span>&nbsp; Cargando…
-                </div>
-            </div>
-        </section>
-    `);
-
     // --- state ---
-    let companiesList = [];
     let selectedCompanyIds = new Set();
 
     // --- company filter from URL ---
@@ -40,33 +35,11 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedCompanyIds.add(urlCompanyId);
     }
 
-    // --- load companies for dropdown ---
-    apiFetch('/api/companies')
-        .then(data => {
-            companiesList = Array.isArray(data) ? data : (data.companies || []);
-            buildCompanySelector();
-            return apiFetch('/api/pending');
-        })
-        .then(pendingResult => {
-            renderResults(pendingResult);
-        })
-        .catch(err => {
-            render(`
-                ${navbarHTML('process')}
-                <section class="section">
-                    <div class="container">
-                        <h1 class="title">Panel de envío de facturas</h1>
-                        <p class="has-text-danger">${err.message}</p>
-                    </div>
-                </section>
-            `);
-        });
-
     // --- build company selector (only if no company_id in URL) ---
-    function buildCompanySelector() {
+    function buildCompanySelector(compList) {
         if (urlCompanyId) return; // filter already applied
 
-        const options = companiesList.map(c =>
+        const options = compList.map(c =>
             `<option value="${c.id}">${escapeHTML(c.name || c.id)}</option>`
         ).join('');
 
@@ -119,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Build company selector
         let companySelectorHTML = '';
         if (!urlCompanyId) {
-            const options = companiesList.map(c =>
+            const options = companies.map(c =>
                 `<option value="${c.id}">${escapeHTML(c.name || c.id)}</option>`
             ).join('');
             companySelectorHTML = `
@@ -223,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         render(`
-            ${navbarHTML('process')}
+            ${navbarHTML('process', companies, selectedId ? parseInt(selectedId) : null)}
             <section class="section">
                 <div class="container">
                     <h1 class="title">Panel de envío de facturas</h1>
@@ -453,4 +426,5 @@ document.addEventListener('DOMContentLoaded', () => {
         return div.innerHTML;
     }
 
+    // Populate navbar company selector
 });

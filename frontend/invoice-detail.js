@@ -1,6 +1,6 @@
 // Veri*Factu — Invoice Detail Page
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const invoiceId = getParam('id');
     const companyId = getParam('company_id');
 
@@ -9,7 +9,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    document.getElementById('app').innerHTML = navbarHTML('companies');
+    // Save as selected company
+    setSelectedCompany(companyId);
+
+    // Load companies first for navbar
+    let allCompanies = [];
+    try {
+        allCompanies = await apiFetch('/api/companies');
+    } catch (err) {
+        console.error('Error loading companies:', err);
+    }
+
+    document.getElementById('app').innerHTML = navbarHTML('companies', allCompanies, parseInt(companyId));
 
     fetchInvoice(companyId, invoiceId);
 });
@@ -20,9 +31,10 @@ async function fetchInvoice(companyId, invoiceId) {
             apiFetch(`/api/${companyId}/invoices/${invoiceId}`),
             apiFetch(`/api/${companyId}`),
         ]);
+
         renderInvoice(companyId, invoiceId, invoice, company);
     } catch (err) {
-        document.getElementById('app').innerHTML = navbarHTML('companies') +
+        document.getElementById('app').innerHTML = navbarHTML('companies', allCompanies, parseInt(companyId)) +
             `<section class="section"><div class="container"><div class="notification is-danger">Error loading invoice: ${err.message}</div></div></section>`;
     }
 }
