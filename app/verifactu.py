@@ -77,7 +77,7 @@ class verifactuXML:
     def hour_timezone(self):
         from zoneinfo import ZoneInfo
         tz = ZoneInfo(self.time_zone)
-        return datetime.now(tz).isoformat()
+        return datetime.now(tz).isoformat(timespec='seconds')
 
     def last_invoice(self, company):
         return db.session.query(Invoice).filter(
