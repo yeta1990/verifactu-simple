@@ -1,0 +1,167 @@
+/* Veri*Factu — Shared custom styles (complements Bulma) */
+
+/* ── Base ─────────────────────────────────────────────────────────────── */
+body {
+    background-color: #f5f7fa;
+}
+
+.section {
+    padding: 2rem 1.5rem 3rem;
+}
+
+/* ── Navbar ───────────────────────────────────────────────────────────── */
+.navbar.is-dark {
+    background-color: #1e293b;
+}
+.navbar.is-dark .navbar-item,
+.navbar.is-dark .navbar-link {
+    color: #e2e8f0;
+}
+.navbar.is-dark .navbar-item:hover,
+.navbar.is-dark .navbar-item.is-active {
+    background-color: #334155;
+    color: #ffffff;
+}
+.navbar-brand strong {
+    color: #ffffff;
+}
+
+/* ── Toast notifications ──────────────────────────────────────────────── */
+.notification.is-toast {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 99999;
+    min-width: 300px;
+    max-width: 440px;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+    border-left: 4px solid rgba(0, 0, 0, .2);
+    animation: toastSlideIn .25s ease-out;
+}
+.notification.is-toast.is-success { border-left-color: #2f855a; }
+.notification.is-toast.is-danger  { border-left-color: #c53030; }
+.notification.is-toast.is-warning { border-left-color: #d69e2e; }
+.notification.is-toast.is-info    { border-left-color: #3182ce; }
+
+.notification.is-toast .toast-icon {
+    margin-right: 0.5rem;
+    font-size: 1.1em;
+}
+.notification.is-toast .toast-body {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+}
+.notification.is-toast .delete {
+    flex-shrink: 0;
+}
+
+@keyframes toastSlideIn {
+    from { transform: translateX(110%); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+}
+
+/* ── Stat cards (dashboard) ───────────────────────────────────────────── */
+.stat-card {
+    transition: transform .15s ease, box-shadow .15s ease;
+    border-radius: 8px;
+}
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .08);
+}
+.stat-card .stat-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #3273dc;
+    line-height: 1.2;
+}
+.stat-card .stat-label {
+    font-size: 0.95rem;
+    color: #7a7a7a;
+    margin-top: 0.25rem;
+}
+.stat-card .icon-large {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+/* ── Loading spinner ──────────────────────────────────────────────────── */
+.vf-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.vf-spinner::before {
+    content: "";
+    width: 1.1rem;
+    height: 1.1rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: vfSpin .6s linear infinite;
+}
+.vf-spinner.vf-spinner-lg::before {
+    width: 2rem;
+    height: 2rem;
+    border-width: 3px;
+}
+@keyframes vfSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Buttons spacing ──────────────────────────────────────────────────── */
+.buttons:not(.is-grouped):not(.has-addons) .button + .button {
+    margin-left: 0.5rem;
+}
+
+/* Table action buttons — compact, consistent */
+.table .button.is-small,
+.table a.button.is-small {
+    white-space: nowrap;
+}
+.table-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* ── Tags ─────────────────────────────────────────────────────────────── */
+.tag:not(body) {
+    font-weight: 600;
+}
+
+/* ── Boxes ────────────────────────────────────────────────────────────── */
+.box {
+    border-radius: 8px;
+}
+
+/* ── Forms ────────────────────────────────────────────────────────────── */
+.field + .field {
+    margin-top: 0;
+}
+
+/* ── Modal ────────────────────────────────────────────────────────────── */
+.modal-card {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* ── Helpers ──────────────────────────────────────────────────────────── */
+.is-clickable {
+    cursor: pointer;
+}
+.nowrap {
+    white-space: nowrap;
+}
+
+/* is-vcentered se eliminó en Bulma 1.0 pero se sigue usando en tablas de
+   detalle (company.js, invoice-detail.js). Lo restauramos como utilidad. */
+.is-vcentered {
+    vertical-align: middle !important;
+}

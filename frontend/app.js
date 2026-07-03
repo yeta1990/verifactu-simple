@@ -3,56 +3,129 @@
 const API_BASE = '';
 
 /**
- * Fetch wrapper with error handling.
+ * Fetch wrapper with robust error handling.
+ *
+ * El backend responde errores como JSON {error: '...'}, pero a veces la
+ * respuesta no es JSON (página HTML 500, 204 vacío, 405, caída de red...).
+ * Antes se hacía resp.json() antes de comprobar resp.ok y se perdía el
+ * mensaje real (SyntaxError "Unexpected token"). Ahora se lee de forma
+ * segura y siempre se lanza un Error legible.
+ *
  * @param {string} url - API endpoint
  * @param {object} opts - fetch options
- * @returns {Promise<object>} parsed JSON
+ * @returns {Promise<object>} parsed JSON (lanza Error si no es ok)
  */
 async function apiFetch(url, opts = {}) {
-    const resp = await fetch(API_BASE + url, {
-        headers: { 'Content-Type': 'application/json', ...opts.headers },
-        ...opts,
-    });
-    const data = await resp.json();
-    if (!resp.ok) {
-        throw new Error(data.error || `HTTP ${resp.status}`);
+    let resp;
+    try {
+        resp = await fetch(API_BASE + url, {
+            headers: { 'Content-Type': 'application/json', ...opts.headers },
+            ...opts,
+        });
+    } catch (networkErr) {
+        // Sin red, servidor caído, CORS, etc.
+        throw new Error('No se ha podido conectar con el servidor. Comprueba que está en ejecución.');
     }
-    return data;
+
+    // Leemos el cuerpo como texto y parseamos JSON de forma segura
+    // (la respuesta puede no ser JSON: HTML de error 500, 204 vacío, etc.)
+    let data = null;
+    let parseErr = null;
+    try {
+        const text = await resp.text();
+        if (text) {
+            try {
+                data = JSON.parse(text);
+            } catch (_) {
+                // El cuerpo no es JSON (p.ej. HTML de error de Flask)
+                parseErr = text.trim().slice(0, 200);
+            }
+        }
+    } catch (_) {
+        // No se pudo leer el cuerpo
+    }
+
+    if (!resp.ok) {
+        let msg = '';
+        if (data && typeof data === 'object' && data.error) {
+            msg = data.error;
+        } else if (data && typeof data === 'object' && data.message) {
+            msg = data.message;
+        } else if (parseErr) {
+            msg = parseErr;
+        } else {
+            msg = `Error HTTP ${resp.status}`;
+        }
+        // Añadimos el código de estado para facilitar el diagnóstico
+        const err = new Error(msg);
+        err.status = resp.status;
+        err.data = data;
+        throw err;
+    }
+
+    // Respuesta OK pero sin cuerpo (p.ej. 204) → devolvemos objeto vacío
+    return data ?? {};
 }
 
 /**
  * Show a Bulma toast notification.
+ * Los toasts se apilan verticalmente (no se eliminan entre sí) y los de
+ * error/aviso duran más que los de éxito/info.
  * @param {string} message
  * @param {'is-success'|'is-danger'|'is-warning'|'is-info'} type
+ * @param {number} [duration] - ms (opcional; por defecto según tipo)
  */
-function showToast(message, type = 'is-info') {
-    const existing = document.querySelector('.notification.is-toast');
-    if (existing) existing.remove();
+function showToast(message, type = 'is-info', duration) {
+    const icons = {
+        'is-success': 'fa-circle-check',
+        'is-danger':  'fa-circle-exclamation',
+        'is-warning': 'fa-triangle-exclamation',
+        'is-info':    'fa-circle-info',
+    };
+    const defaultDuration = {
+        'is-success': 4000,
+        'is-info':    4000,
+        'is-warning': 7000,
+        'is-danger':  8000,
+    };
+    const ms = duration ?? defaultDuration[type] ?? 5000;
+
+    // Apilar toasts existentes: recalculamos posición vertical
+    const stack = document.querySelectorAll('.notification.is-toast');
+    let topOffset = 1; // rem
+    stack.forEach(t => { topOffset += t.offsetHeight / 16 + 0.5; });
 
     const toast = document.createElement('div');
     toast.className = `notification ${type} is-toast`;
-    toast.style.cssText = `
-        position: fixed; top: 1rem; right: 1rem; z-index: 99999;
-        min-width: 280px; max-width: 420px; box-shadow: 0 4px 12px rgba(0,0,0,.15);
-        animation: slideIn .25s ease-out;
-    `;
+    toast.style.top = `${topOffset}rem`;
     toast.innerHTML = `
-        <button class="delete" onclick="this.parentElement.remove()"></button>
-        ${message}
+        <span class="toast-icon"><i class="fas ${icons[type] || icons['is-info']}"></i></span>
+        <span class="toast-body">${message}</span>
+        <button class="delete" aria-label="cerrar"></button>
     `;
     document.body.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 4000);
-}
 
-/** Inject keyframe animation once */
-(function injectToastCSS() {
-    const id = 'verifactu-toast-style';
-    if (document.getElementById(id)) return;
-    const style = document.createElement('style');
-    style.id = id;
-    style.textContent = `@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`;
-    document.head.appendChild(style);
-})();
+    const remove = () => {
+        toast.style.transition = 'opacity .3s ease, transform .3s ease';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(110%)';
+        setTimeout(() => {
+            toast.remove();
+            // Reordenar toasts restantes
+            let offset = 1;
+            document.querySelectorAll('.notification.is-toast').forEach(t => {
+                t.style.top = `${offset}rem`;
+                offset += t.offsetHeight / 16 + 0.5;
+            });
+        }, 300);
+    };
+
+    toast.querySelector('.delete').addEventListener('click', remove);
+    let toastTimer = setTimeout(remove, ms);
+    // Pausar auto-cierre al entrar el ratón y reanudarlo al salir
+    toast.addEventListener('mouseenter', () => clearTimeout(toastTimer));
+    toast.addEventListener('mouseleave', () => { toastTimer = setTimeout(remove, ms); });
+}
 
 /**
  * Escape HTML special characters to prevent XSS.
@@ -183,7 +256,7 @@ function companySelectorHTML(companies, selectedId = null) {
             <div class="control">
                 <div class="select is-small is-fullwidth">
                     <select onchange="onNavbarCompanyChange(this.value)">
-                        <option value="">🏢 Empresa…</option>
+                        <option value="">Empresa…</option>
                         ${opts}
                     </select>
                 </div>

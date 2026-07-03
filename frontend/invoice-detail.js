@@ -1,11 +1,15 @@
 // Veri*Factu — Invoice Detail Page
 
+// Module-scope para que fetchInvoice pueda reutilizarla en el catch
+// (antes se referenciaba una variable inexistente y rompía el manejo de error)
+let allCompanies = [];
+
 document.addEventListener('DOMContentLoaded', async () => {
     const invoiceId = getParam('id');
     const companyId = getParam('company_id');
 
     if (!invoiceId || !companyId) {
-        document.getElementById('app').innerHTML = emptyState('Invoice ID and Company ID are required.');
+        document.getElementById('app').innerHTML = emptyState('Se requiere el identificador de factura y de empresa.');
         return;
     }
 
@@ -13,7 +17,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     setSelectedCompany(companyId);
 
     // Load companies first for navbar
-    let allCompanies = [];
     try {
         allCompanies = await apiFetch('/api/companies');
     } catch (err) {
@@ -22,10 +25,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('app').innerHTML = navbarHTML('companies', allCompanies, parseInt(companyId));
 
-    fetchInvoice(companyId, invoiceId);
+    fetchInvoice(companyId, invoiceId, allCompanies);
 });
 
-async function fetchInvoice(companyId, invoiceId) {
+async function fetchInvoice(companyId, invoiceId, allCompanies) {
     try {
         const [invoice, company] = await Promise.all([
             apiFetch(`/api/${companyId}/invoices/${invoiceId}`),
@@ -34,8 +37,8 @@ async function fetchInvoice(companyId, invoiceId) {
 
         renderInvoice(companyId, invoiceId, invoice, company);
     } catch (err) {
-        document.getElementById('app').innerHTML = navbarHTML('companies', allCompanies, parseInt(companyId)) +
-            `<section class="section"><div class="container"><div class="notification is-danger">Error loading invoice: ${err.message}</div></div></section>`;
+        document.getElementById('app').innerHTML = navbarHTML('companies', allCompanies || [], parseInt(companyId)) +
+            `<section class="section"><div class="container"><div class="notification is-danger"><span class="icon"><i class="fas fa-circle-exclamation"></i></span> Error al cargar la factura: ${escapeHtml(err.message)}</div></div></section>`;
     }
 }
 
@@ -61,7 +64,7 @@ function renderInvoice(companyId, invoiceId, inv, company) {
     } else if (inv.verifactu_err != null && inv.verifactu_err !== 0) {
         statusClass = 'is-danger';
         statusText = 'Error en envío';
-        statusExtra = `<div class="mt-2 has-text-danger"><small>${escapeHTML(inv.verifactu_err)}</small></div>`;
+        statusExtra = `<div class="mt-2 has-text-danger"><small>Código de error AEAT: <strong>${escapeHTML(inv.verifactu_err)}</strong></small></div>`;
     } else {
         statusClass = 'is-success';
         statusText = 'Enviada correctamente';
@@ -79,7 +82,7 @@ function renderInvoice(companyId, invoiceId, inv, company) {
     const type = inv.verifactu_type || '';
 
     if (!isVoided && !isSent) {
-        const btnClass = 'button is-small is-outlined mt-2';
+        const btnClass = 'button is-small is-outlined';
         if (type === 'F1' || type === 'F3') {
             rectButtonsHTML = `
                 <button class="${btnClass} rect-btn" data-action="rect">Rectificación por integración</button>
@@ -103,7 +106,10 @@ function renderInvoice(companyId, invoiceId, inv, company) {
     let voidButtonHTML = '';
     if (!isVoided && !isSent) {
         voidButtonHTML = `
-            <button class="button is-danger is-outlined is-small mt-2 void-btn">Anular</button>
+            <button class="button is-danger is-outlined is-small void-btn">
+                <span class="icon is-small"><i class="fas fa-ban"></i></span>
+                <span>Anular</span>
+            </button>
         `;
     }
 
@@ -143,14 +149,15 @@ function renderInvoice(companyId, invoiceId, inv, company) {
         <div class="container">
             <!-- Header -->
             <div class="mb-5">
-                <a href="/frontend/invoice.html?company_id=${companyId}" class="button is-small is-light mb-3">← Volver</a>
+                <a href="/frontend/invoices.html?company_id=${companyId}" class="button is-small is-light mb-3">← Volver</a>
                 <div class="is-flex is-align-items-center is-flex-wrap-wrap is-justify-content-space-between">
                     <div>
                         <h1 class="is-size-2">Factura ${escapeHTML(inv.number_format)}</h1>
                         ${invoiceRefHTML}
                     </div>
                     <button class="button is-primary is-small" id="downloadPdfBtn" style="white-space:nowrap;">
-                        ⬇ Descargar PDF
+                        <span class="icon is-small"><i class="fas fa-file-pdf"></i></span>
+                        <span>Descargar PDF</span>
                     </button>
                 </div>
                 <div class="is-flex mt-2">
@@ -214,10 +221,7 @@ function renderInvoice(companyId, invoiceId, inv, company) {
                     </div>
 
                     <!-- Actions -->
-                    <div class="mb-5">
-                        ${voidButtonHTML}
-                        ${rectButtonsHTML}
-                    </div>
+                    ${(voidButtonHTML || rectButtonsHTML) ? `<div class="buttons mb-5">${voidButtonHTML}${rectButtonsHTML}</div>` : ''}
                 </div>
 
                 <!-- Right: QR -->

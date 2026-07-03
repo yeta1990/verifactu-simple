@@ -5,33 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Configuración — Veri*Factu</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.3/css/bulma.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="/frontend/style.css">
 </head>
 <body>
     <div id="app"></div>
     <section class="section">
         <div class="container">
-            <h1 class="title">Configuración del Sistema</h1>
+            <h1 class="title">
+                <span class="icon-text"><span class="icon"><i class="fas fa-gear"></i></span><span>Configuración del Sistema</span></span>
+            </h1>
 
             <form id="config-form">
                 <!-- debug -->
                 <div class="field">
                     <label class="checkbox">
-                        <input type="checkbox" id="debug" name="debug"> Debug
+                        <input type="checkbox" id="debug" name="debug"> Modo depuración (debug)
                     </label>
                 </div>
 
                 <!-- backend_url -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="backend_url">Backend URL</label>
-                        <input class="input" type="text" id="backend_url" name="backend_url" placeholder="http://localhost:3000">
+                        <label class="label" for="backend_url">URL del backend</label>
+                        <input class="input" type="text" id="backend_url" name="backend_url" placeholder="http://localhost:8023">
                     </div>
                 </div>
 
                 <!-- sqlite_path -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="sqlite_path">SQLite Database Path</label>
+                        <label class="label" for="sqlite_path">Ruta de la base de datos SQLite</label>
                         <input class="input" type="text" id="sqlite_path" name="sqlite_path" placeholder="./verifactu.db">
                     </div>
                 </div>
@@ -39,7 +43,7 @@
                 <!-- software_company_name -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="software_company_name">Software Company Name</label>
+                        <label class="label" for="software_company_name">Nombre de la empresa desarrolladora</label>
                         <input class="input" type="text" id="software_company_name" name="software_company_name" placeholder="Mi Empresa S.L.">
                     </div>
                 </div>
@@ -47,7 +51,7 @@
                 <!-- software_company_nif -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="software_company_nif">Software Company NIF</label>
+                        <label class="label" for="software_company_nif">NIF de la empresa desarrolladora</label>
                         <input class="input" type="text" id="software_company_nif" name="software_company_nif" placeholder="B12345678">
                     </div>
                 </div>
@@ -55,47 +59,47 @@
                 <!-- software_name -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="software_name">Software Name</label>
-                        <input class="input" type="text" id="software_name" name="software_name" placeholder="VeriFactu Manager">
+                        <label class="label" for="software_name">Nombre del software</label>
+                        <input class="input" type="text" id="software_name" name="software_name" placeholder="verifactu">
                     </div>
                 </div>
 
                 <!-- software_id -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="software_id">Software ID</label>
-                        <input class="input" type="text" id="software_id" name="software_id" placeholder="VF-MGR-2024">
+                        <label class="label" for="software_id">Identificador del sistema (2 caracteres)</label>
+                        <input class="input" type="text" id="software_id" name="software_id" placeholder="vf">
                     </div>
                 </div>
 
                 <!-- software_version -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="software_version">Software Version</label>
-                        <input class="input" type="text" id="software_version" name="software_version" placeholder="1.0.0">
+                        <label class="label" for="software_version">Versión del software</label>
+                        <input class="input" type="text" id="software_version" name="software_version" placeholder="1.0">
                     </div>
                 </div>
 
                 <!-- software_install_number -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="software_install_number">Software Install Number</label>
-                        <input class="input" type="text" id="software_install_number" name="software_install_number" placeholder="A123456789">
+                        <label class="label" for="software_install_number">Número de instalación</label>
+                        <input class="input" type="text" id="software_install_number" name="software_install_number" placeholder="00001">
                     </div>
                 </div>
 
                 <!-- verifactu_log_file -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="verifactu_log_file">VeriFactu Log File</label>
-                        <input class="input" type="text" id="verifactu_log_file" name="verifactu_log_file" placeholder="./logs/verifactu.log">
+                        <label class="label" for="verifactu_log_file">Archivo de log de Veri*Factu</label>
+                        <input class="input" type="text" id="verifactu_log_file" name="verifactu_log_file" placeholder="./verifactu.log">
                     </div>
                 </div>
 
                 <!-- verifactu_save_responses -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="verifactu_save_responses">Save Responses</label>
+                        <label class="label" for="verifactu_save_responses">Guardar respuestas AEAT en</label>
                         <input class="input" type="text" id="verifactu_save_responses" name="verifactu_save_responses" placeholder="./responses">
                     </div>
                 </div>
@@ -103,20 +107,23 @@
                 <!-- send_mode -->
                 <div class="field">
                     <div class="control">
-                        <label class="label" for="send_mode">Send Mode</label>
-                        <div class="select">
+                        <label class="label" for="send_mode">Modo de envío</label>
+                        <div class="select is-fullwidth">
                             <select id="send_mode" name="send_mode">
-                                <option value="mock">mock</option>
-                                <option value="test">test</option>
-                                <option value="prod">prod</option>
+                                <option value="mock">mock (simulado, sin envío real)</option>
+                                <option value="test">test (sede de pruebas AEAT)</option>
+                                <option value="prod">prod (producción)</option>
                             </select>
                         </div>
                     </div>
                 </div>
 
-                <div class="field mt-4">
+                <div class="field mt-5">
                     <div class="control">
-                        <button type="submit" class="button is-primary">Guardar configuración</button>
+                        <button type="submit" class="button is-primary" id="btn-save-config">
+                            <span class="icon"><i class="fas fa-floppy-disk"></i></span>
+                            <span>Guardar configuración</span>
+                        </button>
                     </div>
                 </div>
             </form>

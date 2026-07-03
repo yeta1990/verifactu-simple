@@ -151,7 +151,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <td>${escapeHtml(company.country)}</td>
                     <td>${escapeHtml(company.phone || '—')}</td>
                     <td>
-                        <a href="#" class="btn-view-company" data-id="${company.id}">Ver</a>
+                        <a href="#" class="button is-small is-info is-outlined btn-view-company" data-id="${company.id}">
+                            <span class="icon is-small"><i class="fas fa-eye"></i></span>
+                            <span>Ver</span>
+                        </a>
                     </td>
                 </tr>
             `).join('');

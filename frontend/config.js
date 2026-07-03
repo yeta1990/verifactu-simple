@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', (e) => {
         e.preventDefault();
 
+        const btn = document.getElementById('btn-save-config');
         const payload = {
             debug: document.getElementById('debug').checked,
             backend_url: document.getElementById('backend_url').value,
@@ -61,6 +62,11 @@ document.addEventListener('DOMContentLoaded', () => {
             send_mode: document.getElementById('send_mode').value,
         };
 
+        if (btn) {
+            btn.classList.add('is-loading');
+            btn.disabled = true;
+        }
+
         apiFetch('/api/config', {
             method: 'POST',
             body: JSON.stringify(payload),
@@ -73,6 +79,12 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .catch((err) => {
             showToast('Error al guardar la configuración: ' + err.message, 'is-danger');
+        })
+        .finally(() => {
+            if (btn) {
+                btn.classList.remove('is-loading');
+                btn.disabled = false;
+            }
         });
     });
 });

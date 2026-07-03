@@ -84,7 +84,7 @@ function renderCompany(company, companyId, companies) {
                     <span>Nueva factura</span>
                 </a>
                 <button class="button is-light" id="btn-edit-company">
-                    <span class="icon"><i class="fas fa-edit"></i></span>
+                    <span class="icon"><i class="fas fa-pen"></i></span>
                     <span>Editar empresa</span>
                 </button>
             </div>

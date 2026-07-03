@@ -243,11 +243,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <td><span class="tag ${typeClass} is-size-7">${typeLabel}</span></td>
                                 <td>${statusTag}</td>
                                 <td>
-                                    <a href="/frontend/invoice-detail.html?id=${inv.id}&company_id=${companyId}" class="has-text-link">Ver</a>
-                                    ${!inv.verifactu_dt && !inv.voided ? `
-                                        <span class="ml-2">|</span>
-                                        <a href="/frontend/invoice.html?company_id=${companyId}" class="has-text-weight-bold">Editar</a>
-                                    ` : ''}
+                                    <div class="table-actions">
+                                        <a href="/frontend/invoice-detail.html?id=${inv.id}&company_id=${companyId}" class="button is-small is-info is-outlined">
+                                            <span class="icon is-small"><i class="fas fa-eye"></i></span>
+                                            <span>Ver</span>
+                                        </a>
+                                        ${!inv.verifactu_dt && !inv.voided ? `
+                                            <a href="/frontend/invoice.html?company_id=${companyId}" class="button is-small is-light">
+                                                <span class="icon is-small"><i class="fas fa-pen"></i></span>
+                                                <span>Editar</span>
+                                            </a>
+                                        ` : ''}
+                                    </div>
                                 </td>
                             </tr>
                         `;

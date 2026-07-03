@@ -45,7 +45,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </div>
                         <div class="column is-narrow" style="display:flex;align-items:flex-end;">
                             <button id="btn-consultar" class="button is-primary is-fullwidth">
-                                Consultar
+                                <span class="icon"><i class="fas fa-magnifying-glass"></i></span>
+                                <span>Consultar</span>
                             </button>
                         </div>
                     </div>
@@ -110,8 +111,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         btnConsultar.disabled = true;
-        btnConsultar.textContent = 'Consultando…';
-        resultsArea.innerHTML = '<div class="has-text-centered py-6"><p class="is-loading"></p></div>';
+        btnConsultar.innerHTML = '<span class="vf-spinner"></span> Consultando…';
+        resultsArea.innerHTML = '<div class="has-text-centered py-6"><p class="vf-spinner vf-spinner-lg has-text-grey">Consultando AEAT…</p></div>';
 
         try {
             const resp = await apiFetch(`/api/${companyId}/query?year=${year}&month=${month}`);
@@ -150,7 +151,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             resultsArea.innerHTML = '';
         } finally {
             btnConsultar.disabled = false;
-            btnConsultar.textContent = 'Consultar';
+            btnConsultar.innerHTML = '<span class="icon"><i class="fas fa-magnifying-glass"></i></span><span>Consultar</span>';
         }
     });
 });
