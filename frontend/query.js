@@ -123,28 +123,67 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
-            // Build table: iterate over first item's keys for columns
-            const headers = Object.keys(data[0]);
+            // Define meaningful columns from the nested structure
+            const columns = [
+                { label: 'NIF Emisor',           extract: r => r.IDFactura?.IDEmisorFactura || '' },
+                { label: 'Num. Factura',         extract: r => r.IDFactura?.NumSerieFactura || '' },
+                { label: 'Fecha Factura',        extract: r => r.IDFactura?.FechaExpedicionFactura || '' },
+                { label: 'Descripción',          extract: r => r.DatosRegistroFacturacion?.DescripcionOperacion || '' },
+                { label: 'Tipo Factura',         extract: r => r.DatosRegistroFacturacion?.TipoFactura || '' },
+                { label: 'Destinatario',         extract: r => {
+                        const d = r.DatosRegistroFacturacion?.Destinatarios;
+                        return d?.IDDestinatario?.NombreRazon
+                            ? d.IDDestinatario.NombreRazon + ' (' + d.IDDestinatario.NIF + ')'
+                            : (r.FacturaSinIdentifDestinatarioArt61d === 'S' ? '(Sin identificar)' : '');
+                    }},
+                { label: 'Base Imponible',       extract: r => {
+                        const ds = r.DatosRegistroFacturacion?.Desglose?.DetalleDesglose;
+                        return ds?.BaseImponibleOimporteNoSujeto ? formatEUR(ds.BaseImponibleOimporteNoSujeto) : '';
+                    }},
+                { label: 'Cuota Iva',            extract: r => {
+                        const ds = r.DatosRegistroFacturacion?.Desglose?.DetalleDesglose;
+                        return ds?.CuotaRepercutida ? formatEUR(ds.CuotaRepercutida) : '';
+                    }},
+                { label: 'Tipo Impositivo',      extract: r => {
+                        const ds = r.DatosRegistroFacturacion?.Desglose?.DetalleDesglose;
+                        return ds?.TipoImpositivo ? ds.TipoImpositivo + '%' : '';
+                    }},
+                { label: 'Clave Régimen',        extract: r => {
+                        const ds = r.DatosRegistroFacturacion?.Desglose?.DetalleDesglose;
+                        return ds?.ClaveRegimen || '';
+                    }},
+                { label: 'Importe Total',        extract: r => {
+                        const total = r.DatosRegistroFacturacion?.ImporteTotal;
+                        return total ? formatEUR(total) : '';
+                    }},
+                { label: 'NIF Presentador',      extract: r => r.DatosPresentacion?.NIFPresentador || '' },
+                { label: 'Fecha/Hora Registro',  extract: r => formatDate(r.DatosRegistroFacturacion?.FechaHoraHusoGenRegistro) },
+                { label: 'Huella',               extract: r => r.DatosRegistroFacturacion?.Huella ? escapeHtml(r.DatosRegistroFacturacion.Huella.slice(0, 16)) + '…' : '' },
+                { label: 'Estado',               extract: r => r.EstadoRegistro?.EstadoRegistro || '' },
+                { label: 'Id Petición',          extract: r => r.DatosPresentacion?.IdPeticion || '' },
+            ];
+
             let tableHTML = `
-                <table class="table is-fullwidth is-striped is-hoverable">
-                    <thead>
-                        <tr>
-                            ${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}
-                        </tr>
-                    </thead>
-                    <tbody>
+                <div class="table-container">
+                    <table class="table is-fullwidth is-striped is-hoverable is-bordered">
+                        <thead>
+                            <tr>
+                                ${columns.map(c => `<th>${c.label}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
             `;
 
             data.forEach(row => {
                 tableHTML += '<tr>';
-                headers.forEach(h => {
-                    const val = row[h];
-                    tableHTML += `<td>${val !== null && val !== undefined ? escapeHtml(String(val)) : ''}</td>`;
+                columns.forEach(col => {
+                    const val = col.extract(row);
+                    tableHTML += `<td>${val !== null && val !== undefined && val !== '' ? escapeHtml(String(val)) : '<span class="has-text-light">—</span>'}</td>`;
                 });
                 tableHTML += '</tr>';
             });
 
-            tableHTML += '</tbody></table>';
+            tableHTML += '</tbody></table></div>';
             resultsArea.innerHTML = tableHTML;
         } catch (err) {
             showToast('Error en la consulta: ' + err.message, 'is-danger');
