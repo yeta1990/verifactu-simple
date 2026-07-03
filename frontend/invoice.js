@@ -60,25 +60,20 @@ document.addEventListener('DOMContentLoaded', () => {
             <!-- Section 1: Client data -->
             <h2 class="title is-5">Datos del cliente</h2>
 
-            <!-- Client selector: always a searchable dropdown -->
+            <!-- Client selector: native dropdown -->
             <div class="columns">
                 <div class="column is-6">
                     <div class="field">
                         <label class="label">Seleccionar cliente</label>
-                        <div class="control has-icons-left" style="position:relative;">
-                            <input class="input" id="f-client-search" type="text"
-                                   placeholder="Buscar o escribir nombre de cliente…">
-                            <span class="icon is-left" id="client-search-icon" style="display:none;">
-                                <i class="fas fa-check has-text-success"></i>
-                            </span>
-                            <div class="dropdown" id="client-dropdown" style="display:none; z-index:10; position:absolute; top:100%; left:0; right:0; min-width:100%;">
-                                <div class="dropdown-menu" id="client-dropdown-menu"
-                                      style="max-height:200px; overflow-y:auto; border:1px solid #dbdbdb; border-top:none; background:white;">
-                                </div>
+                        <div class="control">
+                            <div class="select is-fullwidth">
+                                <select id="f-client-select">
+                                    <option value="">— Seleccionar cliente —</option>
+                                </select>
                             </div>
                         </div>
                         <p class="help is-size-7 has-text-grey" id="client-hint">
-                            Selecciona un cliente existente o deja vacío para crear uno nuevo
+                            Selecciona un cliente para auto-rellenar sus datos, o rellena los campos manualmente para crear uno nuevo
                         </p>
                     </div>
                 </div>
@@ -362,6 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Clear client fields (start fresh for new client) ────────────────
     function clearClientFields() {
         selectedClientId = null;
+        document.getElementById('f-client-select').value = '';
         document.getElementById('f-name').value = '';
         document.getElementById('f-vat_id').value = '';
         document.getElementById('f-address').value = '';
@@ -370,16 +366,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('f-state').value = '';
         document.getElementById('f-country').value = 'ES';
         document.getElementById('f-email').value = '';
-        const searchInput = document.getElementById('f-client-search');
-        if (searchInput) searchInput.value = '';
-        const icon = document.getElementById('client-search-icon');
-        if (icon) icon.style.display = 'none';
         updateTypeBadge();
     }
 
 // ── Pre-fill client fields from a saved client record ───────────────
     function fillClientDataFromClient(client) {
         selectedClientId = client.id;
+        document.getElementById('f-client-select').value = client.id;
         document.getElementById('f-name').value = client.name || '';
         document.getElementById('f-vat_id').value = client.vat_id || '';
         document.getElementById('f-address').value = client.address || '';
@@ -407,30 +400,24 @@ document.addEventListener('DOMContentLoaded', () => {
         buildClientDropdown(clients);
     }
 
-// ── Build client dropdown based on whether clients exist ────────────
+// ── Build client dropdown options ──────────────────────────────────
     function buildClientDropdown(clientList) {
         const hint = document.getElementById('client-hint');
-        const menu = document.getElementById('client-dropdown-menu');
-        const searchInput = document.getElementById('f-client-search');
+        const select = document.getElementById('f-client-select');
 
         if (clientList.length === 0) {
-            // No clients: show hint, clear dropdown
-            hint.textContent = 'No hay clientes aún — se guardará como nuevo cliente';
-            hint.className = 'help is-size-7 has-text-grey';
-            menu.innerHTML = '<div class="dropdown-item has-text-grey">No hay clientes disponibles</div>';
-            searchInput.placeholder = 'Nuevo cliente — escribe el nombre';
+            // No clients: show empty state in select
+            select.innerHTML = '<option value="" disabled selected>No hay clientes registrados</option>';
+            hint.textContent = 'No hay clientes registrados. Rellena los datos del cliente para crear uno nuevo.';
         } else {
-            // Clients exist: populate dropdown with all clients
-            let html = '';
+            // Clients exist: populate select with all clients
+            let opts = '<option value="">— Seleccionar cliente —</option>';
             clientList.forEach(c => {
-                const vatPart = c.vat_id ? ' — ' + escHTML(c.vat_id) : '';
-                html += '<div class="dropdown-item" data-client-id="' + c.id + '">'
-                      + escHTML(c.name) + vatPart + '</div>';
+                const label = c.vat_id ? escHTML(c.name) + ' — ' + escHTML(c.vat_id) : escHTML(c.name);
+                opts += '<option value="' + c.id + '">' + label + '</option>';
             });
-            menu.innerHTML = html;
-            searchInput.placeholder = 'Buscar cliente existente…';
-            hint.textContent = 'Selecciona un cliente de la lista o deja vacío para crear uno nuevo';
-            hint.className = 'help is-size-7 has-text-grey';
+            select.innerHTML = opts;
+            hint.textContent = 'Selecciona un cliente para auto-rellenar sus datos, o rellena los campos manualmente para crear uno nuevo';
         }
 
         selectedClientId = null;
@@ -513,81 +500,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Event: client search (searchable dropdown) ────────────────────
-    function bindClientSearch() {
-        const input = document.getElementById('f-client-search');
-        const dropdown = document.getElementById('client-dropdown');
-        const menu = document.getElementById('client-dropdown-menu');
-        const icon = document.getElementById('client-search-icon');
-        if (!input) return;
+    // ── Event: client select change ──────────────────────────
+    function bindClientSelect() {
+        const select = document.getElementById('f-client-select');
+        if (!select) return;
 
-        let searchTimeout = null;
-
-        // Show dropdown on focus
-        input.addEventListener('focus', () => {
-            dropdown.style.display = 'block';
-        });
-
-        // Filter on input
-        input.addEventListener('input', () => {
-            clearTimeout(searchTimeout);
-            const query = input.value.trim().toLowerCase();
-
-            if (!query) {
-                selectedClientId = null;
-                icon.style.display = 'none';
-                // Re-show all clients
-                buildClientDropdown(clients);
+        select.addEventListener('change', () => {
+            const val = select.value;
+            if (!val) {
+                clearClientFields();
                 return;
             }
-
-            // Debounce search
-            searchTimeout = setTimeout(() => {
-                const results = clients.filter(c =>
-                    c.name.toLowerCase().includes(query) ||
-                    (c.vat_id && c.vat_id.toLowerCase().includes(query))
-                );
-
-                if (results.length === 0) {
-                    menu.innerHTML = '<div class="dropdown-item has-text-grey">Sin resultados</div>';
-                } else {
-                    let html = '';
-                    results.forEach(c => {
-                        const vatPart = c.vat_id ? ' — ' + escHTML(c.vat_id) : '';
-                        html += '<div class="dropdown-item" data-client-id="' + c.id + '">'
-                              + escHTML(c.name) + vatPart + '</div>';
-                    });
-                    menu.innerHTML = html;
-                }
-                dropdown.style.display = 'block';
-            }, 200);
-        });
-
-        // Handle click on dropdown items
-        menu.addEventListener('click', (e) => {
-            const item = e.target.closest('.dropdown-item');
-            if (!item) return;
-            const clientId = parseInt(item.dataset.clientId);
+            const clientId = parseInt(val);
             const client = clients.find(c => c.id === clientId);
             if (client) {
                 fillClientDataFromClient(client);
-                input.value = client.name;
-                dropdown.style.display = 'none';
-                icon.style.display = '';
-            }
-        });
-
-        // Close dropdown on outside click
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('#f-client-search') && !e.target.closest('#client-dropdown')) {
-                dropdown.style.display = 'none';
-            }
-        });
-
-        // Close on Escape
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                dropdown.style.display = 'none';
             }
         });
     }
@@ -742,7 +669,7 @@ document.addEventListener('DOMContentLoaded', () => {
     app.innerHTML = buildSkeleton();
     loadCompanies();
     bindCompanySelect();
-    bindClientSearch();
+    bindClientSelect();
     bindAddLine();
     bindLinesTable();
     bindVatIdChange();
