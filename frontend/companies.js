@@ -112,6 +112,41 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <input class="input" type="text" name="contact">
                             </div>
                         </div>
+                        <hr>
+                        <p class="is-size-7 has-text-weight-bold has-text-grey">Numeración (opcional)</p>
+                        <div class="field">
+                            <label class="label">Fórmula facturas</label>
+                            <div class="control">
+                                <input class="input" type="text" name="formula" placeholder="%y%/%n.8% (ej. 26/00000001)">
+                            </div>
+                            <p class="help is-size-7">%y%=año 2 cifras, %Y%=año 4, %n%=nº, %n.8%=nº con 8 dígitos</p>
+                        </div>
+                        <div class="field">
+                            <label class="label">Fórmula rectificativas</label>
+                            <div class="control">
+                                <input class="input" type="text" name="formula_r" placeholder="R-%y%/%n.8%">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="label">Primer número</label>
+                            <div class="control">
+                                <input class="input" type="number" name="first_num" min="1" placeholder="1">
+                            </div>
+                        </div>
+                        <hr>
+                        <p class="is-size-7 has-text-weight-bold has-text-grey">Certificado digital (solo para test/producción)</p>
+                        <div class="field">
+                            <label class="label">Ruta del certificado (.pem/.p12)</label>
+                            <div class="control">
+                                <input class="input" type="text" name="cert_file" placeholder="Ruta al fichero de certificado">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="label">Ruta de la clave privada (.pem)</label>
+                            <div class="control">
+                                <input class="input" type="text" name="key_file" placeholder="Ruta al fichero de clave">
+                            </div>
+                        </div>
                         <div class="field">
                             <label class="label">
                                 <input class="checkbox" type="checkbox" name="test" checked>
@@ -151,10 +186,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <td>${escapeHtml(company.country)}</td>
                     <td>${escapeHtml(company.phone || '—')}</td>
                     <td>
-                        <a href="#" class="button is-small is-info is-outlined btn-view-company" data-id="${company.id}">
-                            <span class="icon is-small"><i class="fas fa-eye"></i></span>
-                            <span>Ver</span>
-                        </a>
+                        <div class="table-actions">
+                            <a href="#" class="button is-small is-info is-outlined btn-view-company" data-id="${company.id}">
+                                <span class="icon is-small"><i class="fas fa-eye"></i></span>
+                                <span>Ver</span>
+                            </a>
+                            <a href="#" class="button is-small is-danger is-outlined btn-delete-company" data-id="${company.id}" data-name="${escapeHtml(company.name)}">
+                                <span class="icon is-small"><i class="fas fa-trash"></i></span>
+                                <span>Eliminar</span>
+                            </a>
+                        </div>
                     </td>
                 </tr>
             `).join('');
@@ -184,13 +225,34 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     loadCompanies();
 
-    // View company buttons — save as selected and navigate
+    // View/Delete company buttons — save as selected and navigate
     document.getElementById('companies-table').addEventListener('click', (e) => {
-        const btn = e.target.closest('.btn-view-company');
-        if (btn) {
-            const id = btn.dataset.id;
+        const viewBtn = e.target.closest('.btn-view-company');
+        if (viewBtn) {
+            const id = viewBtn.dataset.id;
             setSelectedCompany(id);
             window.location.href = `company.html?id=${id}`;
+            return;
+        }
+        const delBtn = e.target.closest('.btn-delete-company');
+        if (delBtn) {
+            const id = delBtn.dataset.id;
+            const name = delBtn.dataset.name || '';
+            openModal(
+                'Eliminar empresa',
+                `<p>¿Seguro que deseas eliminar la empresa <strong>${escapeHtml(name)}</strong>?</p>
+                 <p class="mt-2 is-size-7 has-text-danger">No se puede eliminar una empresa con facturas asociadas.</p>`,
+                async () => {
+                    try {
+                        await apiFetch(`/api/${id}`, { method: 'DELETE' });
+                        showToast('Empresa eliminada', 'is-success');
+                        loadCompanies();
+                    } catch (err) {
+                        showToast('Error al eliminar: ' + err.message, 'is-danger');
+                    }
+                },
+                'Eliminar'
+            );
         }
     });
 
@@ -198,6 +260,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-new-company').addEventListener('click', () => {
         const modal = document.getElementById('company-modal');
         if (modal) modal.classList.add('is-active');
+    });
+
+    // Cerrar modal con Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('company-modal');
+            if (modal && modal.classList.contains('is-active')) {
+                modal.classList.remove('is-active');
+            }
+        }
     });
 
     // Cancel button closes modal
@@ -234,6 +306,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             email: form.email.value,
             phone: form.phone.value,
             contact: form.contact.value,
+            formula: form.formula.value || undefined,
+            formula_r: form.formula_r.value || undefined,
+            first_num: parseInt(form.first_num.value, 10) || undefined,
+            cert_file: form.cert_file.value || undefined,
+            key_file: form.key_file.value || undefined,
             test: form.test.checked
         };
 

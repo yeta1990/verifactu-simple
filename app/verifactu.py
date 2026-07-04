@@ -158,16 +158,23 @@ class verifactuXML:
         lines = db.session.query(
             db.func.sum(InvoiceLine.bi).label('bi'),
             db.func.sum(InvoiceLine.tvat).label('tvat'),
-            InvoiceLine.vat
-        ).filter(InvoiceLine.invoice_id == invoice.id).group_by(InvoiceLine.vat).all()
+            InvoiceLine.vat,
+            InvoiceLine.clave_regimen,
+            InvoiceLine.calificacion,
+        ).filter(InvoiceLine.invoice_id == invoice.id).group_by(
+            InvoiceLine.vat, InvoiceLine.clave_regimen, InvoiceLine.calificacion
+        ).all()
         for line in lines:
+            clave = line.clave_regimen or '01'
             xml += f'<DetalleDesglose><Impuesto>01</Impuesto>'
             if line.vat:
-                xml += f'<ClaveRegimen>01</ClaveRegimen><CalificacionOperacion>S1</CalificacionOperacion>'
+                calif = line.calificacion or 'S1'
+                xml += f'<ClaveRegimen>{escape(clave)}</ClaveRegimen><CalificacionOperacion>{escape(calif)}</CalificacionOperacion>'
                 xml += f'<TipoImpositivo>{line.vat}</TipoImpositivo><BaseImponibleOimporteNoSujeto>{self.cur(line.bi)}</BaseImponibleOimporteNoSujeto>'
                 xml += f'<CuotaRepercutida>{self.cur(line.tvat)}</CuotaRepercutida>'
             else:
-                xml += f'<CalificacionOperacion>N1</CalificacionOperacion>'
+                calif = line.calificacion or 'N1'
+                xml += f'<ClaveRegimen>{escape(clave)}</ClaveRegimen><CalificacionOperacion>{escape(calif)}</CalificacionOperacion>'
                 xml += f'<BaseImponibleOimporteNoSujeto>{self.cur(line.bi)}</BaseImponibleOimporteNoSujeto>'
             xml += f'</DetalleDesglose>'
 
@@ -397,6 +404,7 @@ class verifactuXML:
 
             stmt = update(Invoice).where(Invoice.id == invoice.id).values({
                 'verifactu_err': cod_error,
+                'verifactu_err_descr': descr_error if has_error else None,
             })
             # Solo las facturas aceptadas se marcan como enviadas (verifactu_dt)
             # y entran en la cadena (fingerprint). Las rechazadas quedan pendientes

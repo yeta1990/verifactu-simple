@@ -3,21 +3,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     const app = document.getElementById('app');
     if (!app) return;
 
-    // Load companies ONCE - used for navbar AND for filtering
+    // Load companies (navbar + filtro) y config (modo de envío) en paralelo
     let companies = [];
+    let sendMode = 'mock';
     try {
-        companies = await apiFetch('/api/companies');
+        const [comps, conf] = await Promise.all([
+            apiFetch('/api/companies'),
+            apiFetch('/api/config').catch(() => ({})),
+        ]);
+        companies = comps || [];
+        sendMode = (conf && conf.send_mode) || 'mock';
     } catch (err) {
         console.error('Error loading companies:', err);
     }
     const selectedId = getSelectedCompany();
 
+    // Map company_id -> test flag (para mostrar modo prueba/producción por fila)
+    const companyTestMap = {};
+    companies.forEach(c => { companyTestMap[c.id] = c.test; });
+
     // --- helpers ---
     function render(html) {
         app.innerHTML = html;
         // El toggle del burger ya se gestiona globalmente por app.js (delegación
-        // en document), así que sobrevive a los re-renders. Antes se re-añadía
-        // un listener en cada render → toggles duplicados.
+        // en document), así que sobrevive a los re-renders.
     }
 
     // --- state ---
@@ -29,28 +38,92 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectedCompanyIds.add(urlCompanyId);
     }
 
+    // --- mode banner ---
+    function buildModeBanner() {
+        const isProd = sendMode === 'prod';
+        const isTest = sendMode === 'test';
+        const cls = isProd ? 'is-danger' : isTest ? 'is-warning' : 'is-info';
+        const icon = isProd ? 'fa-triangle-exclamation' : isTest ? 'fa-flask' : 'fa-circle-info';
+        const label = isProd ? 'MODO PRODUCCIÓN — los envíos a la AEAT son reales e irreversibles'
+            : isTest ? 'MODO TEST — envíos a la sede de pruebas de la AEAT'
+            : 'MODO MOCK — sin envío real (simulado)';
+        return `<div class="notification ${cls} is-light mb-4"><span class="icon"><i class="fas ${icon}"></i></span> ${escapeHtml(label)}</div>`;
+    }
+
+    // --- pending table builder (compartido) ---
+    function pendingTableHTML(invoices) {
+        if (!invoices || invoices.length === 0) {
+            return `<div class="has-text-centered has-text-grey py-6"><p class="is-size-5">No hay facturas pendientes</p><p class="has-text-grey-light">Las facturas pendientes aparecerán aquí cuando se creen.</p></div>`;
+        }
+        return `
+            <div class="table-container">
+                <table class="table is-striped is-hoverable is-fullwidth">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="check-all" aria-label="Seleccionar todas las visibles"></th>
+                            <th>Número</th>
+                            <th>Fecha</th>
+                            <th>Cliente</th>
+                            <th>Total</th>
+                            <th>Empresa</th>
+                            <th>Modo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pending-invoices-body">
+                        ${invoices.map(inv => `
+                            <tr data-company="${inv.company_id}" data-id="${inv.id}">
+                                <td><input type="checkbox" class="invoice-checkbox" data-id="${inv.id}" aria-label="Seleccionar factura ${escapeHtml(inv.num || '')}"></td>
+                                <td>${escapeHtml(inv.num || '—')}</td>
+                                <td>${formatDate(inv.fecha || inv.created_at)}</td>
+                                <td>${escapeHtml(inv.cliente || inv.customer_name || '—')}</td>
+                                <td>${formatEUR(inv.total || inv.amount || 0)}</td>
+                                <td>${escapeHtml(inv.company_name || inv.empresa || '—')}</td>
+                                <td>${companyTestMap[inv.company_id]
+                                    ? '<span class="tag is-warning">Prueba</span>'
+                                    : '<span class="tag is-danger">Prod</span>'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    // --- action buttons builder ---
+    function actionButtonsHTML() {
+        return `
+            <div class="field is-grouped mt-4">
+                <div class="control">
+                    <button class="button is-primary" id="btn-send-selected" disabled>
+                        <span class="icon is-small"><i class="fas fa-paper-plane"></i></span>
+                        <span>Enviar seleccionadas</span>
+                    </button>
+                </div>
+                <div class="control">
+                    <button class="button is-info" id="btn-send-all">
+                        <span class="icon is-small"><i class="fas fa-paper-plane"></i></span>
+                        <span>Enviar todas</span>
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
     // --- render results from API ---
     function renderResults(data) {
-        // /api/pending returns { pending: [...] }
         const pendingInvoices = Array.isArray(data.pending) ? data.pending : [];
-
-        renderApp({
-            ok: [],
-            ko: [],
-            waitMessages: [],
-            pendingInvoiceCounts: pendingInvoices,
-        });
+        renderApp({ ok: [], ko: [], waitMessages: [], pendingInvoiceCounts: pendingInvoices });
     }
 
     // --- main render ---
     function renderApp(data) {
-        const { ok = [], ko = [], waitMessages = [], pendingInvoiceCounts = [] } = data;
+        const { ok = [], ko = [] } = data;
 
         // Build company selector
         let companySelectorHTML = '';
         if (!urlCompanyId) {
             const options = companies.map(c =>
-                `<option value="${c.id}">${escapeHTML(c.name || c.id)}</option>`
+                `<option value="${c.id}">${escapeHtml(c.name || c.id)}</option>`
             ).join('');
             companySelectorHTML = `
                 <div class="field">
@@ -75,7 +148,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="notification is-success mb-4">
                     <strong>${ok.length} factura(s) enviada(s) correctamente:</strong>
                     <ul style="margin-top:0.5rem;margin-bottom:0;">
-                        ${ok.map(item => `<li>Factura ${escapeHTML(item.num || item.id)} enviada correctamente</li>`).join('')}
+                        ${ok.map(item => `<li>Factura ${escapeHtml(item.num || item.id)} enviada correctamente</li>`).join('')}
                     </ul>
                 </div>
             `;
@@ -89,7 +162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <strong>${ko.length} factura(s) con errores:</strong>
                     <ul style="margin-top:0.5rem;margin-bottom:0;">
                         ${ko.map(item =>
-                            `<li class="has-text-danger">Factura ${escapeHTML(item.num || item.id)}: ${escapeHTML(item.descrError || 'Error desconocido')} (código ${escapeHTML(item.codError || '—')})</li>`
+                            `<li class="has-text-danger">Factura ${escapeHtml(item.num || item.id)}: ${escapeHtml(item.descrError || 'Error desconocido')} (código ${escapeHtml(item.codError || '—')})</li>`
                         ).join('')}
                     </ul>
                 </div>
@@ -97,73 +170,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Build pending invoices table
-        window._processPendingInvoices = pendingInvoiceCounts;
-        const filteredInvoices = getFilteredInvoices(pendingInvoiceCounts);
-
-        let pendingTableHTML = '';
-        if (filteredInvoices.length > 0) {
-            pendingTableHTML = `
-                <div class="table-container">
-                    <table class="table is-striped is-hoverable is-fullwidth">
-                        <thead>
-                            <tr>
-                                <th><input type="checkbox" id="check-all"></th>
-                                <th>Número</th>
-                                <th>Fecha</th>
-                                <th>Cliente</th>
-                                <th>Total</th>
-                                <th>Empresa</th>
-                            </tr>
-                        </thead>
-                        <tbody id="pending-invoices-body">
-                            ${filteredInvoices.map(inv => `
-                                <tr data-company="${inv.company_id}" data-id="${inv.id}">
-                                    <td><input type="checkbox" class="invoice-checkbox" data-id="${inv.id}"></td>
-                                    <td>${escapeHTML(inv.num || '—')}</td>
-                                    <td>${formatDate(inv.fecha || inv.created_at)}</td>
-                                    <td>${escapeHTML(inv.cliente || inv.customer_name || '—')}</td>
-                                    <td>${formatEUR(inv.total || inv.amount || 0)}</td>
-                                    <td>${escapeHTML(inv.company_name || inv.empresa || '—')}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        } else {
-            pendingTableHTML = `<div class="has-text-centered has-text-grey py-6"><p class="is-size-5">No hay facturas pendientes</p><p class="has-text-grey-light">Las facturas pendientes aparecerán aquí cuando se creen.</p></div>`;
-        }
-
-        // Build action buttons
-        const buttonsHTML = `
-            <div class="field is-grouped mt-4">
-                <div class="control">
-                    <button class="button is-primary" id="btn-send-selected" disabled>
-                        <span class="icon is-small"><i class="fas fa-paper-plane"></i></span>
-                        <span>Enviar seleccionadas</span>
-                    </button>
-                </div>
-                <div class="control">
-                    <button class="button is-info" id="btn-send-all">
-                        <span class="icon is-small"><i class="fas fa-paper-plane"></i></span>
-                        <span>Enviar todas</span>
-                    </button>
-                </div>
-            </div>
-        `;
+        window._processPendingInvoices = data.pendingInvoiceCounts || [];
+        const filteredInvoices = getFilteredInvoices(window._processPendingInvoices);
+        const tableHTML = pendingTableHTML(filteredInvoices);
 
         render(`
             ${navbarHTML('process', companies, selectedId ? parseInt(selectedId) : null)}
             <section class="section">
                 <div class="container">
                     <h1 class="title">Panel de envío de facturas</h1>
+                    ${buildModeBanner()}
                     ${companySelectorHTML}
                     ${okHTML}
                     ${koHTML}
                     <div id="results-area">
                         <h2 class="subtitle">Facturas pendientes de envío</h2>
-                        ${pendingTableHTML}
-                        ${buttonsHTML}
+                        ${tableHTML}
+                        ${actionButtonsHTML()}
                     </div>
                     <div id="send-results"></div>
                 </div>
@@ -183,59 +206,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const pendingInvoiceCounts = window._processPendingInvoices || [];
         const filtered = getFilteredInvoices(pendingInvoiceCounts);
 
-        let pendingTableHTML = '';
-        if (filtered.length > 0) {
-            pendingTableHTML = `
-                <div class="table-container">
-                    <table class="table is-striped is-hoverable is-fullwidth">
-                        <thead>
-                            <tr>
-                                <th><input type="checkbox" id="check-all"></th>
-                                <th>Número</th>
-                                <th>Fecha</th>
-                                <th>Cliente</th>
-                                <th>Total</th>
-                                <th>Empresa</th>
-                            </tr>
-                        </thead>
-                        <tbody id="pending-invoices-body">
-                            ${filtered.map(inv => `
-                                <tr data-company="${inv.company_id}" data-id="${inv.id}">
-                                    <td><input type="checkbox" class="invoice-checkbox" data-id="${inv.id}"></td>
-                                    <td>${escapeHTML(inv.num || '—')}</td>
-                                    <td>${formatDate(inv.fecha || inv.created_at)}</td>
-                                    <td>${escapeHTML(inv.cliente || inv.customer_name || '—')}</td>
-                                    <td>${formatEUR(inv.total || inv.amount || 0)}</td>
-                                    <td>${escapeHTML(inv.company_name || inv.empresa || '—')}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        } else {
-            pendingTableHTML = `<div class="has-text-centered has-text-grey py-6"><p class="is-size-5">No hay facturas pendientes</p><p class="has-text-grey-light">Las facturas pendientes aparecerán aquí cuando se creen.</p></div>`;
-        }
-
         const resultsArea = document.getElementById('results-area');
         if (resultsArea) {
             resultsArea.innerHTML = `
                 <h2 class="subtitle">Facturas pendientes de envío</h2>
-                ${pendingTableHTML}
-                <div class="field is-grouped mt-4">
-                    <div class="control">
-                        <button class="button is-primary" id="btn-send-selected" disabled>
-                            <span class="icon is-small"><i class="fas fa-paper-plane"></i></span>
-                            <span>Enviar seleccionadas</span>
-                        </button>
-                    </div>
-                    <div class="control">
-                        <button class="button is-info" id="btn-send-all">
-                            <span class="icon is-small"><i class="fas fa-paper-plane"></i></span>
-                            <span>Enviar todas</span>
-                        </button>
-                    </div>
-                </div>
+                ${pendingTableHTML(filtered)}
+                ${actionButtonsHTML()}
             `;
         }
         attachEventListeners();
@@ -253,7 +229,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Select all checkbox
+        // Select all checkbox (solo visibles)
         const checkAll = document.getElementById('check-all');
         if (checkAll) {
             checkAll.addEventListener('change', () => {
@@ -269,16 +245,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             cb.addEventListener('change', updateSendButtons);
         });
 
-        // Send selected button
+        // Send buttons (con confirmación)
         const btnSendSelected = document.getElementById('btn-send-selected');
         if (btnSendSelected) {
-            btnSendSelected.addEventListener('click', () => sendInvoices(true));
+            btnSendSelected.addEventListener('click', () => confirmSend(true));
         }
-
-        // Send all button
         const btnSendAll = document.getElementById('btn-send-all');
         if (btnSendAll) {
-            btnSendAll.addEventListener('click', () => sendInvoices(false));
+            btnSendAll.addEventListener('click', () => confirmSend(false));
         }
     }
 
@@ -292,6 +266,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? `Enviar ${count} seleccionada(s)`
                 : 'Enviar seleccionadas';
         }
+    }
+
+    // --- confirm before sending (UX-1) ---
+    function confirmSend(selectedOnly) {
+        const visibleRows = Array.from(document.querySelectorAll('#pending-invoices-body tr'));
+        const count = selectedOnly
+            ? document.querySelectorAll('.invoice-checkbox:checked').length
+            : visibleRows.length;
+        if (count === 0) {
+            showToast(selectedOnly ? 'Selecciona al menos una factura' : 'No hay facturas pendientes para enviar', 'is-warning');
+            return;
+        }
+        const isProd = sendMode === 'prod';
+        const body = isProd
+            ? `<div class="notification is-danger is-light mb-3"><span class="icon"><i class="fas fa-triangle-exclamation"></i></span> <strong>ATENCIÓN: modo PRODUCCIÓN.</strong> El envío a la AEAT es <strong>irreversible</strong>.</div>
+               <p>¿Confirmas el envío de ${count} factura(s) a la AEAT en producción?</p>`
+            : `<p>¿Confirmas el envío de ${count} factura(s) a la AEAT?</p>
+               <p class="mt-2 is-size-7 has-text-grey">Modo actual: <strong>${escapeHtml(sendMode)}</strong>${sendMode === 'mock' ? ' (simulado, sin envío real)' : ''}</p>`;
+        openModal(
+            'Confirmar envío a la AEAT',
+            body,
+            () => sendInvoices(selectedOnly),
+            'Enviar'
+        );
     }
 
     // --- send invoices ---
@@ -308,27 +306,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             const body = {};
             if (selectedOnly) {
                 const checked = Array.from(document.querySelectorAll('.invoice-checkbox:checked'));
-                if (checked.length === 0) {
-                    showToast('Selecciona al menos una factura', 'is-warning');
-                    return;
-                }
                 body.selected = checked.map(cb => {
                     const tr = cb.closest('tr');
-                    return {
-                        company_id: Number(tr.dataset.company),
-                        invoice_id: Number(tr.dataset.id)
-                    };
+                    return { company_id: Number(tr.dataset.company), invoice_id: Number(tr.dataset.id) };
                 });
+            } else {
+                // "Enviar todas" respeta el filtro visual: envía las facturas visibles
+                const visible = Array.from(document.querySelectorAll('#pending-invoices-body tr'));
+                body.selected = visible.map(tr => ({
+                    company_id: Number(tr.dataset.company),
+                    invoice_id: Number(tr.dataset.id)
+                }));
             }
             const data = await apiFetch('/api/process', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             });
-            const companies = data.companies || {};
+            const companiesResult = data.companies || {};
 
             let html = '';
-            for (const [companyId, result] of Object.entries(companies)) {
+            for (const [companyId, result] of Object.entries(companiesResult)) {
                 if (result.message) {
                     html += `
                         <div class="notification is-warning">
@@ -341,7 +338,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <div class="notification is-success mb-2">
                                 <strong>${result.ok.length} factura(s) enviada(s) correctamente:</strong>
                                 <ul style="margin-top:0.25rem;margin-bottom:0;">
-                                    ${result.ok.map(item => `<li>Factura ${escapeHTML(item.num || item.id)} enviada correctamente</li>`).join('')}
+                                    ${result.ok.map(item => `<li>Factura ${escapeHtml(item.num || item.id)} enviada correctamente</li>`).join('')}
                                 </ul>
                             </div>
                         `;
@@ -352,7 +349,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <strong>${result.ko.length} factura(s) con errores:</strong>
                                 <ul style="margin-top:0.25rem;margin-bottom:0;">
                                     ${result.ko.map(item =>
-                                        `<li class="has-text-danger">Factura ${escapeHTML(item.num || item.id)}: ${escapeHTML(item.descrError || 'Error desconocido')} (código ${escapeHTML(item.codError || '—')})</li>`
+                                        `<li class="has-text-danger">Factura ${escapeHtml(item.num || item.id)}: ${escapeHtml(item.descrError || 'Error desconocido')} (código ${escapeHtml(item.codError || '—')})</li>`
                                     ).join('')}
                                 </ul>
                             </div>
@@ -375,7 +372,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (sendResults) {
                 sendResults.innerHTML = `
                     <div class="notification is-danger">
-                        Error al enviar: ${escapeHTML(err.message)}
+                        Error al enviar: ${escapeHtml(err.message)}
                     </div>
                 `;
             }
@@ -384,14 +381,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (btnSendSelected) btnSendSelected.classList.remove('is-loading');
             if (btnSendAll) btnSendAll.classList.remove('is-loading');
         }
-    }
-
-    // --- utility ---
-    function escapeHTML(str) {
-        if (!str) return '';
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
     }
 
     // --- initial load: show navbar + loading, then fetch pending invoices ---
@@ -416,9 +405,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             <section class="section">
                 <div class="container">
                     <h1 class="title">Panel de envío de facturas</h1>
+                    ${buildModeBanner()}
                     <div class="notification is-danger">
                         <span class="icon"><i class="fas fa-circle-exclamation"></i></span>
-                        Error al cargar las facturas pendientes: ${escapeHTML(err.message)}
+                        Error al cargar las facturas pendientes: ${escapeHtml(err.message)}
                     </div>
                 </div>
             </section>

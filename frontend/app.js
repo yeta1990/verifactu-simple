@@ -97,10 +97,12 @@ function showToast(message, type = 'is-info', duration) {
 
     const toast = document.createElement('div');
     toast.className = `notification ${type} is-toast`;
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
     toast.style.top = `${topOffset}rem`;
     toast.innerHTML = `
         <span class="toast-icon"><i class="fas ${icons[type] || icons['is-info']}"></i></span>
-        <span class="toast-body">${message}</span>
+        <span class="toast-body">${escapeHtml(message)}</span>
         <button class="delete" aria-label="cerrar"></button>
     `;
     document.body.appendChild(toast);
@@ -141,6 +143,7 @@ function escapeHtml(str) {
 
 /**
  * Open a Bulma modal. Returns a reference to the modal element.
+ * Cierra con Escape, fondo o botones; atrapa el foco y lo restaura al cerrar.
  * @param {string} title - Modal title
  * @param {string} bodyHTML - Inner HTML for modal-content
  * @param {function|null} onConfirm - callback when confirm clicked (if null, no confirm btn)
@@ -150,27 +153,76 @@ function escapeHtml(str) {
 function openModal(title, bodyHTML, onConfirm = null, confirmText = 'Aceptar') {
     const modal = document.createElement('div');
     modal.className = 'modal is-active';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
     modal.innerHTML = `
-        <div class="modal-background" onclick="this.closest('.modal').classList.remove('is-active')"></div>
+        <div class="modal-background"></div>
         <div class="modal-card">
             <header class="modal-card-head">
-                <p class="modal-card-title">${title}</p>
-                <button class="delete" aria-label="close" onclick="this.closest('.modal').classList.remove('is-active')"></button>
+                <p class="modal-card-title">${escapeHtml(title)}</p>
+                <button class="delete" aria-label="cerrar"></button>
             </header>
             <section class="modal-card-body">${bodyHTML}</section>
             ${onConfirm ? `<footer class="modal-card-foot">
-                <button class="button is-primary modal-confirm">${confirmText}</button>
-                <button class="button modal-cancel" onclick="this.closest('.modal').classList.remove('is-active')">Cancelar</button>
+                <button class="button is-primary modal-confirm">${escapeHtml(confirmText)}</button>
+                <button class="button modal-cancel">Cancelar</button>
             </footer>` : ''}
         </div>
     `;
     document.body.appendChild(modal);
+
+    // Guardar el foco actual para restaurarlo al cerrar
+    const opener = document.activeElement;
+
+    const close = () => {
+        modal.classList.remove('is-active');
+        modal.remove();
+        document.removeEventListener('keydown', onKeydown);
+        if (opener && typeof opener.focus === 'function') {
+            try { opener.focus(); } catch (_) { /* ignore */ }
+        }
+    };
+
+    const onKeydown = (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+        } else if (e.key === 'Tab') {
+            // Trampa de foco: mantenerlo dentro del modal
+            const focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+            const visible = Array.from(focusable).filter(el => !el.disabled && el.offsetParent !== null);
+            if (visible.length === 0) return;
+            const first = visible[0];
+            const last = visible[visible.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+    };
+    document.addEventListener('keydown', onKeydown);
+
+    modal.querySelector('.modal-background').addEventListener('click', close);
+    modal.querySelector('.delete').addEventListener('click', close);
+    const cancelBtn = modal.querySelector('.modal-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', close);
+
     if (onConfirm) {
         modal.querySelector('.modal-confirm').addEventListener('click', () => {
             onConfirm();
-            modal.classList.remove('is-active');
+            close();
         });
     }
+
+    // Mover el foco al modal (botón de cerrar)
+    setTimeout(() => {
+        const del = modal.querySelector('.delete');
+        if (del) del.focus();
+    }, 0);
+
     return modal;
 }
 
@@ -185,12 +237,21 @@ function emptyState(message) {
 
 /**
  * Format a date string for display.
+ * El backend envía fechas como 'YYYY-MM-DD' (sin hora) o 'YYYY-MM-DD HH:MM:SS'
+ * (sin zona horaria). El navegador interpreta 'YYYY-MM-DD' como UTC, lo que
+ * desplaza el día en zonas occidentales. Forzamos interpretación local.
  * @param {string} dt - ISO date or datetime string
  * @returns {string}
  */
 function formatDate(dt) {
     if (!dt) return '—';
-    const d = new Date(dt);
+    let s = String(dt);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        s += 'T00:00:00';
+    } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) {
+        s = s.replace(' ', 'T');
+    }
+    const d = new Date(s);
     return d.toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
@@ -292,6 +353,7 @@ function navbarHTML(activePage = '', companies = null, selectedId = null) {
         { id: 'dashboard',     label: 'Dashboard',     href: '/' },
         { id: 'companies',     label: 'Empresas',      href: '/frontend/companies.html' },
         { id: 'invoices',      label: 'Facturas',      href: '/frontend/invoices.html' },
+        { id: 'clients',       label: 'Clientes',      href: '/frontend/clients.html' },
         { id: 'process',       label: 'Envío',         href: '/frontend/process.html' },
         { id: 'query',         label: 'Consulta AEAT', href: '/frontend/query.html' },
         { id: 'config',        label: 'Configuración',  href: '/frontend/config.html' },
@@ -328,6 +390,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const target = document.getElementById(burger.dataset.target);
             burger.classList.toggle('is-active');
             if (target) target.classList.toggle('is-active');
+            // Mantener aria-expanded sincronizado con el estado visual
+            burger.setAttribute('aria-expanded', burger.classList.contains('is-active'));
         }
     });
 });

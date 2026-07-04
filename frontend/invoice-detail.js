@@ -64,47 +64,98 @@ function renderInvoice(companyId, invoiceId, inv, company) {
     } else if (inv.verifactu_err != null && inv.verifactu_err !== 0) {
         statusClass = 'is-danger';
         statusText = 'Error en envío';
-        statusExtra = `<div class="mt-2 has-text-danger"><small>Código de error AEAT: <strong>${escapeHTML(inv.verifactu_err)}</strong></small></div>`;
+        statusExtra = `<div class="mt-2 has-text-danger"><small>Código de error AEAT: <strong>${escapeHtml(inv.verifactu_err)}</strong></small></div>`;
+        if (inv.verifactu_err_descr) {
+            statusExtra += `<div class="mt-1 has-text-danger"><small>${escapeHtml(inv.verifactu_err_descr)}</small></div>`;
+        }
     } else {
         statusClass = 'is-success';
         statusText = 'Enviada correctamente';
         statusExtra = `
             <div class="mt-2">
-                <p class="has-text-grey">CSV: <code>${escapeHTML(inv.verifactu_csv || '—')}</code></p>
+                <p class="has-text-grey">CSV: <code>${escapeHtml(inv.verifactu_csv || '—')}</code></p>
                 <p class="has-text-grey mt-1">Fecha envío: ${formatDate(inv.verifactu_dt)}</p>
             </div>`;
     }
 
-    // Rectification buttons (only if NOT voided AND verifactu_dt is null)
+    // Rectification buttons (only if NOT voided)
     let rectButtonsHTML = '';
     const isSent = !!inv.verifactu_dt;
     const isVoided = !!inv.voided;
     const type = inv.verifactu_type || '';
 
-    if (!isVoided && !isSent) {
-        const btnClass = 'button is-small is-outlined';
+    if (!isVoided) {
         if (type === 'F1' || type === 'F3') {
             rectButtonsHTML = `
-                <button class="${btnClass} rect-btn" data-action="rect">Rectificación por integración</button>
-                <button class="${btnClass} rect-btn" data-action="rect2">Rectificación R2</button>
-                <button class="${btnClass} rect-btn" data-action="rectsust">Rectificación por sustitución</button>
+                <div class="mb-4">
+                    <p class="is-size-7 has-text-grey mb-2">Tipos de rectificación disponibles:</p>
+                    <div class="is-flex is-flex-wrap-wrap is-gap-2 mb-2">
+                        <button class="button is-info is-outlined is-small rect-btn" data-action="rect">
+                            <span class="icon is-small"><i class="fas fa-copyleft"></i></span>
+                            <span>Rectificación por integración</span>
+                        </button>
+                        <button class="button is-info is-outlined is-small rect-btn" data-action="rect2">
+                            <span class="icon is-small"><i class="fas fa-copyright"></i></span>
+                            <span>Rectificación R2</span>
+                        </button>
+                        <button class="button is-info is-outlined is-small rect-btn" data-action="rectsust">
+                            <span class="icon is-small"><i class="fas fa-exchange-alt"></i></span>
+                            <span>Rectificación por sustitución</span>
+                        </button>
+                    </div>
+                    <div class="is-size-7 has-text-grey">
+                        <div><strong>Integración</strong>: corrige parcialmente la factura original sin anularla.</div>
+                        <div><strong>R2</strong>: para facturas no cobradas (impagados, Art. 80.3 LGT).</div>
+                        <div><strong>Sustitución</strong>: reemplaza completamente la factura original.</div>
+                    </div>
+                </div>
             `;
         } else if (type === 'F2') {
             rectButtonsHTML = `
-                <button class="${btnClass} rect-btn" data-action="rect">Rectificación por integración</button>
-                <button class="${btnClass} rect-btn" data-action="sust">Sustitutiva</button>
-                <button class="${btnClass} rect-btn" data-action="rectsust">Rectificación por sustitución</button>
+                <div class="mb-4">
+                    <p class="is-size-7 has-text-grey mb-2">Tipos de rectificación disponibles:</p>
+                    <div class="is-flex is-flex-wrap-wrap is-gap-2 mb-2">
+                        <button class="button is-info is-outlined is-small rect-btn" data-action="rect">
+                            <span class="icon is-small"><i class="fas fa-copyleft"></i></span>
+                            <span>Rectificación por integración</span>
+                        </button>
+                        <button class="button is-info is-outlined is-small rect-btn" data-action="sust">
+                            <span class="icon is-small"><i class="fas fa-file-alt"></i></span>
+                            <span>Sustitutiva</span>
+                        </button>
+                        <button class="button is-info is-outlined is-small rect-btn" data-action="rectsust">
+                            <span class="icon is-small"><i class="fas fa-exchange-alt"></i></span>
+                            <span>Rectificación por sustitución</span>
+                        </button>
+                    </div>
+                    <div class="is-size-7 has-text-grey">
+                        <div><strong>Integración</strong>: corrige parcialmente la factura simplificada.</div>
+                        <div><strong>Sustitutiva</strong>: convierte una factura simplificada en completa (con NIF).</div>
+                        <div><strong>Sustitución</strong>: reemplaza completamente la factura simplificada original.</div>
+                    </div>
+                </div>
             `;
         } else if (type === 'R1' || type === 'R5') {
             rectButtonsHTML = `
-                <button class="${btnClass} rect-btn" data-action="rectsust">Rectificación por sustitución</button>
+                <div class="mb-4">
+                    <p class="is-size-7 has-text-grey mb-2">Tipos de rectificación disponibles:</p>
+                    <div class="is-flex is-flex-wrap-wrap is-gap-2 mb-2">
+                        <button class="button is-info is-outlined is-small rect-btn" data-action="rectsust">
+                            <span class="icon is-small"><i class="fas fa-exchange-alt"></i></span>
+                            <span>Rectificación por sustitución</span>
+                        </button>
+                    </div>
+                    <div class="is-size-7 has-text-grey">
+                        <div><strong>Sustitución</strong>: reemplaza la factura rectificativa anterior.</div>
+                    </div>
+                </div>
             `;
         }
     }
 
-    // Anular button (only if NOT voided AND NOT yet sent)
+    // Anular button: solo facturas enviadas a la AEAT (las únicas anulables)
     let voidButtonHTML = '';
-    if (!isVoided && !isSent) {
+    if (!isVoided && isSent) {
         voidButtonHTML = `
             <button class="button is-danger is-outlined is-small void-btn">
                 <span class="icon is-small"><i class="fas fa-ban"></i></span>
@@ -116,7 +167,7 @@ function renderInvoice(companyId, invoiceId, inv, company) {
     // Invoice ref line
     let invoiceRefHTML = '';
     if (inv.invoice_ref) {
-        invoiceRefHTML = `<p class="is-size-7 has-text-grey mt-2">Factura rectificada/sustituida de: ${escapeHTML(inv.invoice_ref)}</p>`;
+        invoiceRefHTML = `<p class="is-size-7 has-text-grey mt-2">Factura rectificada/sustituida de: ${escapeHtml(inv.invoice_ref)}</p>`;
     }
 
     // Lines table
@@ -124,7 +175,7 @@ function renderInvoice(companyId, invoiceId, inv, company) {
     if (inv.lines && inv.lines.length > 0) {
         linesRows = inv.lines.map(line => `
             <tr>
-                <td>${escapeHTML(line.descr)}</td>
+                <td>${escapeHtml(line.descr)}</td>
                 <td>${line.units}</td>
                 <td class="has-text-right">${formatEUR(line.price)}</td>
                 <td class="has-text-right">${formatEUR(line.bi)}</td>
@@ -152,7 +203,7 @@ function renderInvoice(companyId, invoiceId, inv, company) {
                 <a href="/frontend/invoices.html?company_id=${companyId}" class="button is-small is-light mb-3">← Volver</a>
                 <div class="is-flex is-align-items-center is-flex-wrap-wrap is-justify-content-space-between">
                     <div>
-                        <h1 class="is-size-2">Factura ${escapeHTML(inv.number_format)}</h1>
+                        <h1 class="is-size-2">Factura ${escapeHtml(inv.number_format)}</h1>
                         ${invoiceRefHTML}
                     </div>
                     <button class="button is-primary is-small" id="downloadPdfBtn" style="white-space:nowrap;">
@@ -161,7 +212,7 @@ function renderInvoice(companyId, invoiceId, inv, company) {
                     </button>
                 </div>
                 <div class="is-flex mt-2">
-                    <span class="tag ${type === 'F1' || type === 'F3' ? 'is-info' : type === 'F2' ? 'is-warning' : type === 'R1' || type === 'R5' ? 'is-dark' : 'is-light'}">${escapeHTML(type || '—')}</span>
+                    <span class="tag ${type === 'F1' || type === 'F3' ? 'is-info' : type === 'F2' ? 'is-warning' : type === 'R1' || type === 'R5' ? 'is-dark' : 'is-light'}">${escapeHtml(type || '—')}</span>
                     <span class="tag is-light ml-2">${formatDate(inv.dt)}</span>
                 </div>
             </div>
@@ -179,13 +230,13 @@ function renderInvoice(companyId, invoiceId, inv, company) {
                     <div class="box mb-5">
                         <h2 class="is-size-4 mb-4">Datos del Cliente</h2>
                         <table class="table is-fullwidth is-narrow">
-                            <tr><td class="is-vcentered has-text-weight-bold">Nombre</td><td>${escapeHTML(inv.name || '—')}</td></tr>
-                            <tr><td class="is-vcentered has-text-weight-bold">VAT ID</td><td>${escapeHTML(inv.vat_id || '—')}</td></tr>
-                            <tr><td class="is-vcentered has-text-weight-bold">Dirección</td><td>${escapeHTML(inv.address || '—')}</td></tr>
-                            <tr><td class="is-vcentered has-text-weight-bold">C.P.</td><td>${escapeHTML(inv.postal_code || '—')}</td></tr>
-                            <tr><td class="is-vcentered has-text-weight-bold">Ciudad</td><td>${escapeHTML(inv.city || '—')}</td></tr>
-                            <tr><td class="is-vcentered has-text-weight-bold">País</td><td>${escapeHTML(inv.country || '—')}</td></tr>
-                            <tr><td class="is-vcentered has-text-weight-bold">Email</td><td>${escapeHTML(inv.email || '—')}</td></tr>
+                            <tr><td class="is-vcentered has-text-weight-bold">Nombre</td><td>${escapeHtml(inv.name || '—')}</td></tr>
+                            <tr><td class="is-vcentered has-text-weight-bold">VAT ID</td><td>${escapeHtml(inv.vat_id || '—')}</td></tr>
+                            <tr><td class="is-vcentered has-text-weight-bold">Dirección</td><td>${escapeHtml(inv.address || '—')}</td></tr>
+                            <tr><td class="is-vcentered has-text-weight-bold">C.P.</td><td>${escapeHtml(inv.postal_code || '—')}</td></tr>
+                            <tr><td class="is-vcentered has-text-weight-bold">Ciudad</td><td>${escapeHtml(inv.city || '—')}</td></tr>
+                            <tr><td class="is-vcentered has-text-weight-bold">País</td><td>${escapeHtml(inv.country || '—')}</td></tr>
+                            <tr><td class="is-vcentered has-text-weight-bold">Email</td><td>${escapeHtml(inv.email || '—')}</td></tr>
                         </table>
                     </div>
 
@@ -219,6 +270,17 @@ function renderInvoice(companyId, invoiceId, inv, company) {
                             <tr class="is-size-5"><td class="has-text-weight-bold">Total</td><td class="has-text-right"><strong>${formatEUR(inv.total)}</strong></td></tr>
                         </table>
                     </div>
+
+                    <!-- Additional data: ref / comments -->
+                    ${(inv.ref || inv.comments) ? `
+                    <div class="box mb-5">
+                        <h2 class="is-size-4 mb-4">Datos adicionales</h2>
+                        <table class="table is-fullwidth is-narrow">
+                            <tr><td class="has-text-weight-bold" style="width:30%">Referencia</td><td>${escapeHtml(inv.ref || '—')}</td></tr>
+                            <tr><td class="has-text-weight-bold">Observaciones</td><td>${escapeHtml(inv.comments || '—')}</td></tr>
+                        </table>
+                    </div>
+                    ` : ''}
 
                     <!-- Actions -->
                     ${(voidButtonHTML || rectButtonsHTML) ? `<div class="buttons mb-5">${voidButtonHTML}${rectButtonsHTML}</div>` : ''}
@@ -298,6 +360,7 @@ function attachActionHandlers(companyId, invoiceId, inv) {
                     try {
                         await apiFetch(endpoints[action], {
                             method: 'POST',
+                            body: JSON.stringify({}),
                         });
                         showToast('Rectificación creada correctamente', 'is-success');
                         window.location.href = `/frontend/invoice.html?company_id=${companyId}`;
@@ -309,13 +372,6 @@ function attachActionHandlers(companyId, invoiceId, inv) {
             );
         });
     });
-}
-
-function escapeHTML(str) {
-    if (str == null) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
 }
 
 /**
@@ -584,7 +640,8 @@ async function generatePdf(companyId, invoiceId, inv, company, qrSrc) {
         doc.text('QR no disponible', pageW - MX - 30, footerY + footerBoxH / 2);
     }
 
-    doc.save(`factura_${inv.number_format}.pdf`);
+    const safeName = String(inv.number_format || 'factura').replace(/[^a-zA-Z0-9._-]/g, '_');
+    doc.save(`factura_${safeName}.pdf`);
 }
 
 /** Convert ArrayBuffer to base64 for jsPDF addImage */

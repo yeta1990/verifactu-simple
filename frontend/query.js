@@ -67,13 +67,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const VERIFACTU_START_YEAR = 2025;
     const monthNames = [
         'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
     ];
 
-    // Years: currentYear … 2200
-    for (let y = currentYear; y <= 2200; y++) {
+    // Years: desde 2025 (entrada en vigor de Veri*Factu) hasta 2200
+    const yearStart = Math.min(VERIFACTU_START_YEAR, currentYear);
+    for (let y = yearStart; y <= 2200; y++) {
         const opt = document.createElement('option');
         opt.value = y;
         opt.textContent = y;
@@ -158,17 +160,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }},
                 { label: 'NIF Presentador',      extract: r => r.DatosPresentacion?.NIFPresentador || '' },
                 { label: 'Fecha/Hora Registro',  extract: r => formatDate(r.DatosRegistroFacturacion?.FechaHoraHusoGenRegistro) },
-                { label: 'Huella',               extract: r => r.DatosRegistroFacturacion?.Huella ? escapeHtml(r.DatosRegistroFacturacion.Huella.slice(0, 16)) + '…' : '' },
+                { label: 'Huella',               extract: r => r.DatosRegistroFacturacion?.Huella ? r.DatosRegistroFacturacion.Huella.slice(0, 16) + '…' : '' },
                 { label: 'Estado',               extract: r => r.EstadoRegistro?.EstadoRegistro || '' },
                 { label: 'Id Petición',          extract: r => r.DatosPresentacion?.IdPeticion || '' },
             ];
 
             let tableHTML = `
+                <div class="is-flex is-justify-content-space-between is-align-items-center mb-3">
+                    <p class="is-size-6 has-text-grey">${data.length} factura(s) encontrada(s)</p>
+                    <button class="button is-small is-light" id="btn-export-csv">
+                        <span class="icon is-small"><i class="fas fa-file-csv"></i></span>
+                        <span>Exportar CSV</span>
+                    </button>
+                </div>
                 <div class="table-container">
                     <table class="table is-fullwidth is-striped is-hoverable is-bordered">
                         <thead>
                             <tr>
-                                ${columns.map(c => `<th>${c.label}</th>`).join('')}
+                                ${columns.map(c => `<th>${escapeHtml(c.label)}</th>`).join('')}
                             </tr>
                         </thead>
                         <tbody>
@@ -185,6 +194,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             tableHTML += '</tbody></table></div>';
             resultsArea.innerHTML = tableHTML;
+
+            // Exportar CSV (G-6)
+            const btnExport = document.getElementById('btn-export-csv');
+            if (btnExport) {
+                btnExport.addEventListener('click', () => exportResultsCSV(columns, data));
+            }
         } catch (err) {
             showToast('Error en la consulta: ' + err.message, 'is-danger');
             resultsArea.innerHTML = '';
@@ -194,3 +209,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 });
+
+/**
+ * Exporta los resultados de la consulta AEAT a CSV y lo descarga.
+ * (G-6 — exportación de datos)
+ */
+function exportResultsCSV(columns, data) {
+    const escapeCSV = (val) => {
+        const s = String(val == null ? '' : val);
+        if (/[";\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+        return s;
+    };
+    const sep = ';'; // Excel en español usa ;
+    const header = columns.map(c => escapeCSV(c.label)).join(sep);
+    const rows = data.map(row =>
+        columns.map(col => escapeCSV(col.extract(row))).join(sep)
+    ).join('\r\n');
+    const csv = '\uFEFF' + header + '\r\n' + rows; // BOM para Excel
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'consulta_aeat.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}

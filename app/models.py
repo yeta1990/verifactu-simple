@@ -43,6 +43,8 @@ class Company(db.Model):
     def to_dict(self, cert_days=False):
         result = to_dict(self)
         result['created'] = self.created.strftime('%Y-%m-%d')
+        # Indicador de certificado configurado (sin exponer la ruta)
+        result['has_cert'] = bool(self.cert_file and self.key_file)
         result.pop('key_file', None)
         result.pop('cert_file', None)
         return result
@@ -50,7 +52,9 @@ class Company(db.Model):
     @staticmethod
     def validate_fields(data, element=None):
         required = ['name', 'vat_id']
-        allowed = ['name', 'trade_name', 'vat_id', 'address', 'postal_code', 'city', 'state', 'country', 'email', 'phone', 'contact', 'test']
+        allowed = ['name', 'trade_name', 'vat_id', 'address', 'postal_code', 'city', 'state',
+                   'country', 'email', 'phone', 'contact', 'test',
+                   'cert_file', 'key_file', 'formula', 'formula_r', 'first_num']
         return validate_fields(data, required, allowed, element)
 
     def get_url_aeat(self):
@@ -82,6 +86,7 @@ class Invoice(db.Model):
     verifactu_dt = db.Column(db.TIMESTAMP, index=True)
     verifactu_csv = db.Column(db.Text)
     verifactu_err = db.Column(db.Integer)
+    verifactu_err_descr = db.Column(db.Text)
     invoice_ref_id = db.Column(db.Integer, db.ForeignKey('invoices.id', ondelete='RESTRICT'))
     voided = db.Column(db.Boolean, index=True, nullable=False, default=False)
 
@@ -189,6 +194,8 @@ class InvoiceLine(db.Model):
     units = db.Column(db.Integer)
     price = db.Column(db.Float)
     vat = db.Column(db.Integer)
+    clave_regimen = db.Column(db.String(2))
+    calificacion = db.Column(db.String(2))
     tvat = db.Column(db.Float)
     bi = db.Column(db.Float)
     total = db.Column(db.Float)
@@ -201,7 +208,7 @@ class InvoiceLine(db.Model):
     @staticmethod
     def validate_fields(data, element=None):
         required = ['descr', 'units', 'price']
-        allowed = ['descr', 'units', 'price', 'vat']
+        allowed = ['descr', 'units', 'price', 'vat', 'clave_regimen', 'calificacion']
         return validate_fields(data, required, allowed, element)
 
 

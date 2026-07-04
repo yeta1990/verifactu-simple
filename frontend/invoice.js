@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let searchTimeout = null;
 
     // ── Helpers ────────────────────────────────────────────────────────
-    function escHTML(str) {
+    function escapeHtml(str) {
         const d = document.createElement('div');
         d.textContent = str || '';
         return d.innerHTML;
@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     <section class="section">
         <div class="container">
-            <p class="title">Nueva Factura</p>
+            <h1 class="title">Nueva Factura</h1>
             <p class="subtitle">Rellenar los datos del cliente, líneas y resumen</p>
 
             <p class="mt-3">
@@ -88,17 +88,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             <!-- Section 1: Client data -->
             <h2 class="title is-5">Datos del cliente</h2>
 
-            <!-- Client selector: native dropdown -->
+            <!-- Client selector: native dropdown + incremental search (G-2) -->
             <div class="columns">
                 <div class="column is-6">
                     <div class="field">
-                        <label class="label">Seleccionar cliente</label>
-                        <div class="control">
-                            <div class="select is-fullwidth">
-                                <select id="f-client-select">
-                                    <option value="">— Seleccionar cliente —</option>
-                                </select>
-                            </div>
+                        <label class="label">Buscar / seleccionar cliente</label>
+                        <div class="control has-icons-left">
+                            <input class="input" type="text" id="f-client-search" placeholder="Escribe para buscar (nombre o NIF)…">
+                            <span class="icon is-left"><i class="fas fa-magnifying-glass"></i></span>
+                        </div>
+                        <div class="select is-fullwidth mt-2">
+                            <select id="f-client-select">
+                                <option value="">— Seleccionar cliente —</option>
+                            </select>
                         </div>
                         <p class="help is-size-7 has-text-grey" id="client-hint">
                             Selecciona un cliente para auto-rellenar sus datos, o rellena los campos manualmente para crear uno nuevo
@@ -221,15 +223,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <table class="table is-fullwidth is-bordered" id="lines-table">
                     <thead>
                         <tr>
-                            <th style="width:5%">#</th>
-                            <th style="width:30%">Descripción</th>
-                            <th style="width:10%">Unidades</th>
-                            <th style="width:12%">Precio</th>
-                            <th style="width:8%">IVA%</th>
-                            <th style="width:12%">Subtotal</th>
-                            <th style="width:12%">IVA</th>
-                            <th style="width:11%">Total</th>
-                            <th style="width:7%">Acciones</th>
+                            <th style="width:4%">#</th>
+                            <th style="width:24%">Descripción</th>
+                            <th style="width:8%">Unidades</th>
+                            <th style="width:10%">Precio</th>
+                            <th style="width:7%">IVA%</th>
+                            <th style="width:7%">Clave</th>
+                            <th style="width:8%">Calif.</th>
+                            <th style="width:10%">Subtotal</th>
+                            <th style="width:10%">IVA</th>
+                            <th style="width:10%">Total</th>
+                            <th style="width:6%">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="lines-tbody">
@@ -241,6 +245,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="has-text-centered has-text-grey mt-2" id="lines-empty">
                 <p>Añade al menos una línea para crear la factura.</p>
             </div>
+            <p class="help is-size-7 has-text-grey mt-2">
+                <strong>IVA% vacío</strong> = operación no sujeta/exenta (Calificación N1). •
+                <strong>Clave</strong>: 01 general, 02 exportación, 03 bienes usados, 04 agencias viaje, 05 cupones, 06 determinadas, 07 itinerancia. •
+                <strong>Calif.</strong>: Auto = según IVA; S1 sujeta, S2 exenta, N1 no sujeta, N2 no sujeta por localización.
+            </p>
 
             <hr>
 
@@ -299,10 +308,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return { subtotal, iva, total };
     }
 
-    function fmtEUR(n) {
-        return n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
-    }
-
     // ── Render lines table ─────────────────────────────────────────────
     function renderLines() {
         const tbody = document.getElementById('lines-tbody');
@@ -320,12 +325,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         let html = '';
         lines.forEach((line, i) => {
             const v = computeLineValues(line);
+            const vatVal = (line.vat === '' || line.vat == null) ? '' : line.vat;
             html += `
                 <tr>
                     <td class="has-text-centered">${renderLineIndex(i)}</td>
                     <td>
                         <input class="input is-small" type="text" placeholder="Descripción"
-                               value="${escHTML(line.descr)}" data-line="${i}" data-field="descr">
+                               value="${escapeHtml(line.descr)}" data-line="${i}" data-field="descr">
                     </td>
                     <td>
                         <input class="input is-small has-text-centered" type="number" min="0" step="any"
@@ -337,11 +343,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </td>
                     <td>
                         <input class="input is-small has-text-centered" type="number" min="0" step="any"
-                               value="${line.vat}" data-line="${i}" data-field="vat">
+                               value="${vatVal}" data-line="${i}" data-field="vat" placeholder="Vacío=exenta">
                     </td>
-                    <td class="has-text-right has-text-weight-bold">${fmtEUR(v.subtotal)}</td>
-                    <td class="has-text-right has-text-weight-bold">${fmtEUR(v.iva)}</td>
-                    <td class="has-text-right has-text-weight-bold has-text-link">${fmtEUR(v.total)}</td>
+                    <td>
+                        <div class="select is-small">
+                            <select data-line="${i}" data-field="clave_regimen" aria-label="Clave de régimen">
+                                ${['01','02','03','04','05','06','07'].map(k =>
+                                    `<option value="${k}" ${line.clave_regimen === k ? 'selected' : ''}>${k}</option>`).join('')}
+                            </select>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="select is-small">
+                            <select data-line="${i}" data-field="calificacion" aria-label="Calificación operación">
+                                ${[['','Auto'],['S1','S1 suj.'],['S2','S2 exenta'],['S3','S3'],['N1','N1 no suj.'],['N2','N2']].map(([val,label]) =>
+                                    `<option value="${val}" ${line.calificacion === val ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+                            </select>
+                        </div>
+                    </td>
+                    <td class="has-text-right has-text-weight-bold">${formatEUR(v.subtotal)}</td>
+                    <td class="has-text-right has-text-weight-bold">${formatEUR(v.iva)}</td>
+                    <td class="has-text-right has-text-weight-bold has-text-link">${formatEUR(v.total)}</td>
                     <td class="has-text-centered">
                         <button class="button is-small is-danger is-outlined btn-delete-line" data-line="${i}">
                             <span class="icon is-small"><i class="fas fa-trash"></i></span>
@@ -364,9 +386,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             iva += v.iva;
             total += v.total;
         });
-        document.getElementById('sum-base').value = fmtEUR(base);
-        document.getElementById('sum-iva').value = fmtEUR(iva);
-        document.getElementById('sum-total').value = fmtEUR(total);
+        document.getElementById('sum-base').value = formatEUR(base);
+        document.getElementById('sum-iva').value = formatEUR(iva);
+        document.getElementById('sum-total').value = formatEUR(total);
     }
 
     // ── Update type badge ──────────────────────────────────────────────
@@ -413,14 +435,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
 // ── Load clients for a company and populate dropdown ────────────────
-    async function loadClients(companyId) {
+    async function loadClients(companyId, q) {
         if (!companyId) {
             clients = [];
             buildClientDropdown([]);
             return;
         }
         try {
-            clients = await apiFetch('/api/' + companyId + '/clients');
+            const url = '/api/' + companyId + '/clients' + (q ? ('?q=' + encodeURIComponent(q)) : '');
+            clients = await apiFetch(url);
         } catch (err) {
             console.error('Error loading clients:', err);
             clients = [];
@@ -441,7 +464,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Clients exist: populate select with all clients
             let opts = '<option value="">— Seleccionar cliente —</option>';
             clientList.forEach(c => {
-                const label = c.vat_id ? escHTML(c.name) + ' — ' + escHTML(c.vat_id) : escHTML(c.name);
+                const label = c.vat_id ? escapeHtml(c.name) + ' — ' + escapeHtml(c.vat_id) : escapeHtml(c.name);
                 opts += '<option value="' + c.id + '">' + label + '</option>';
             });
             select.innerHTML = opts;
@@ -469,7 +492,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             let opts = '<option value="">— Seleccionar empresa —</option>';
             list.forEach(c => {
                 const name = c.name || 'Empresa sin nombre';
-                opts += `<option value="${c.id}">${escHTML(name)}</option>`;
+                opts += `<option value="${c.id}">${escapeHtml(name)}</option>`;
             });
             select.innerHTML = opts;
 
@@ -502,7 +525,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             select.disabled = false;
 
         } catch (err) {
-            wrapper.innerHTML = '<p class="has-text-danger">Error al cargar empresas: ' + escHTML(err.message) + '</p>';
+            wrapper.innerHTML = '<p class="has-text-danger">Error al cargar empresas: ' + escapeHtml(err.message) + '</p>';
             select.disabled = true;
         }
     }
@@ -559,10 +582,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // ── Event: client search (incremental, G-2) ─────────────────────
+    function bindClientSearch() {
+        const search = document.getElementById('f-client-search');
+        if (!search) return;
+        search.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (selectedCompanyId) loadClients(selectedCompanyId, search.value.trim());
+            }, 300);
+        });
+    }
+
     // ── Event: add line ────────────────────────────────────────────────
     function bindAddLine() {
         document.getElementById('btn-add-line').addEventListener('click', () => {
-            lines.push({ descr: '', units: 1, price: 0, vat: 21 });
+            lines.push({ descr: '', units: 1, price: 0, vat: 21, clave_regimen: '01', calificacion: '' });
             renderLines();
         });
     }
@@ -572,16 +607,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         const tbody = document.getElementById('lines-tbody');
 
         tbody.addEventListener('change', (e) => {
-            const input = e.target.closest('input');
-            if (!input) return;
-            const lineIdx = parseInt(input.dataset.line);
-            const field = input.dataset.field;
+            const el = e.target.closest('input, select');
+            if (!el) return;
+            const lineIdx = parseInt(el.dataset.line);
+            const field = el.dataset.field;
             if (isNaN(lineIdx) || !lines[lineIdx]) return;
 
             if (field === 'descr') {
-                lines[lineIdx].descr = input.value;
+                lines[lineIdx].descr = el.value;
+            } else if (field === 'vat') {
+                // IVA vacío = operación no sujeta/exenta (C-1)
+                lines[lineIdx].vat = el.value === '' ? '' : parseFloat(el.value);
+            } else if (field === 'clave_regimen' || field === 'calificacion') {
+                lines[lineIdx][field] = el.value;
             } else {
-                lines[lineIdx][field] = parseFloat(input.value) || 0;
+                lines[lineIdx][field] = parseFloat(el.value) || 0;
             }
             renderLines();
         });
@@ -656,7 +696,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     descr: l.descr,
                     units: parseFloat(l.units) || 0,
                     price: parseFloat(l.price) || 0,
-                    vat: parseFloat(l.vat) || 0
+                    vat: (l.vat === '' || l.vat == null) ? null : parseFloat(l.vat),
+                    clave_regimen: l.clave_regimen || '01',
+                    calificacion: l.calificacion || null
                 }))
             };
 
@@ -715,6 +757,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     bindCompanySelect();
     bindClientSelect();
+    bindClientSearch();
     bindAddLine();
     bindLinesTable();
     bindVatIdChange();

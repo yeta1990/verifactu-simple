@@ -8,12 +8,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     try {
-        // Fetch all companies, then find the matching one
-        const companies = await apiFetch('/api/companies');
-        const company = companies.find(c => String(c.id) === String(companyId));
+        // Cargar la lista de empresas (navbar) y la empresa concreta en paralelo.
+        // Antes se descargaban todas las empresas y se hacía find() en cliente.
+        const [companies, company] = await Promise.all([
+            apiFetch('/api/companies').catch(() => []),
+            apiFetch(`/api/${companyId}`),
+        ]);
 
-        if (!company) {
-            document.getElementById('app').innerHTML = emptyState('Empresa no encontrada.');
+        if (!company || company.id === undefined) {
+            document.getElementById('app').innerHTML = navbarHTML('companies', companies || [], parseInt(companyId)) +
+                emptyState('Empresa no encontrada.');
             return;
         }
 
@@ -21,15 +25,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         setSelectedCompany(companyId);
 
         // Render company detail + invoices
-        // Render company detail + invoices
         const html = renderCompany(company, companyId, companies) + await renderInvoices(companyId);
         document.getElementById('app').innerHTML = html;
 
-        // Wire edit modal
+        // Wire edit modal + delete
         wireEditModal(company);
 
     } catch (err) {
-        document.getElementById('app').innerHTML = emptyState('Error al cargar los datos: ' + err.message);
+        document.getElementById('app').innerHTML = emptyState('Error al cargar los datos: ' + escapeHtml(err.message));
         showToast('Error al cargar la empresa', 'is-danger');
     }
 });
@@ -52,13 +55,14 @@ function renderCompany(company, companyId, companies) {
         { label: 'Primera núm.', value: company.first_num },
         { label: 'Creada',       value: formatDate(company.created) },
         { label: 'Test',         value: company.test ? 'Sí' : 'No' },
-        { label: 'Últ. envío',   value: formatDate(company.next_send) },
+        { label: 'Certificado',  value: company.has_cert ? 'Configurado' : 'No configurado' },
+        { label: 'Próx. envío permitido', value: formatDate(company.next_send) },
     ];
 
     const rows = fields.map(f => `
         <tr>
-            <th class="is-vcentered">${f.label}</th>
-            <td class="is-vcentered">${f.value || '—'}</td>
+            <th class="is-vcentered">${escapeHtml(f.label)}</th>
+            <td class="is-vcentered">${escapeHtml(f.value || '—')}</td>
         </tr>
     `).join('');
 
@@ -69,8 +73,8 @@ function renderCompany(company, companyId, companies) {
             <p class="mb-3">
                 <a href="/frontend/companies.html" class="button is-small is-light">← Volver</a>
             </p>
-            <h1 class="title">${company.name}</h1>
-            <p class="subtitle is-6 has-text-grey">${company.vat_id || ''}</p>
+            <h1 class="title">${escapeHtml(company.name || '')}</h1>
+            <p class="subtitle is-6 has-text-grey">${escapeHtml(company.vat_id || '')}</p>
 
             <div class="box">
                 <table class="table is-fullwidth">
@@ -86,6 +90,10 @@ function renderCompany(company, companyId, companies) {
                 <button class="button is-light" id="btn-edit-company">
                     <span class="icon"><i class="fas fa-pen"></i></span>
                     <span>Editar empresa</span>
+                </button>
+                <button class="button is-danger is-outlined" id="btn-delete-company">
+                    <span class="icon"><i class="fas fa-trash"></i></span>
+                    <span>Eliminar empresa</span>
                 </button>
             </div>
 
@@ -164,10 +172,50 @@ function renderCompany(company, companyId, companies) {
                                     <input class="input" type="text" name="contact" value="${escapeHtml(company.contact || '')}">
                                 </div>
                             </div>
+
+                            <hr>
+                            <p class="is-size-7 has-text-weight-bold has-text-grey">Numeración</p>
+                            <div class="field">
+                                <label class="label">Fórmula facturas</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="formula" value="${escapeHtml(company.formula || '')}" placeholder="%y%/%n.8% (ej. 26/00000001)">
+                                </div>
+                                <p class="help is-size-7">%y%=año 2 cifras, %Y%=año 4 cifras, %n%=nº, %n.8%=nº con 8 dígitos</p>
+                            </div>
+                            <div class="field">
+                                <label class="label">Fórmula rectificativas</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="formula_r" value="${escapeHtml(company.formula_r || '')}" placeholder="R-%y%/%n.8%">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Primer número</label>
+                                <div class="control">
+                                    <input class="input" type="number" name="first_num" min="1" value="${escapeHtml(String(company.first_num ?? ''))}" placeholder="1">
+                                </div>
+                            </div>
+
+                            <hr>
+                            <p class="is-size-7 has-text-weight-bold has-text-grey">Certificado digital (necesario para test/producción)</p>
+                            <div class="field">
+                                <label class="label">Ruta del certificado (.pem/.p12)</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="cert_file" placeholder="${company.has_cert ? 'Configurado (escriba para cambiar)' : 'Ruta al fichero de certificado'}">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Ruta de la clave privada (.pem)</label>
+                                <div class="control">
+                                    <input class="input" type="text" name="key_file" placeholder="${company.has_cert ? 'Configurada (escriba para cambiar)' : 'Ruta al fichero de clave'}">
+                                </div>
+                                <p class="help is-size-7">Déjelo en blanco para mantener el certificado actual. Solo necesario en modo test/producción.</p>
+                            </div>
+
+                            <hr>
                             <div class="field">
                                 <label class="label">
                                     <input class="checkbox" type="checkbox" name="test" ${company.test ? 'checked' : ''}>
-                                    Modo prueba
+                                    Modo prueba (sede de pruebas AEAT)
                                 </label>
                             </div>
                             <div class="field is-grouped">
@@ -232,8 +280,8 @@ async function renderInvoices(companyId) {
         return `
         <tr>
             <td>${formatDate(inv.dt)}</td>
-            <td>${inv.number_format || inv.num || '—'}</td>
-            <td>${inv.verifactu_type || '—'}</td>
+            <td>${escapeHtml(inv.number_format || inv.num || '—')}</td>
+            <td>${escapeHtml(inv.verifactu_type || '—')}</td>
             <td>${formatEUR(inv.total)}</td>
             <td>${statusTag}</td>
             <td>
@@ -275,14 +323,64 @@ function wireEditModal(company) {
     const btnDelete = modal.querySelector('.delete');
     const bg = modal.querySelector('.modal-background');
     const form = document.getElementById('edit-form');
+    const btnDeleteCompany = document.getElementById('btn-delete-company');
 
-    const close = () => modal.classList.remove('is-active');
-    const open = () => modal.classList.add('is-active');
+    // Guardar foco para restaurar al cerrar (accesibilidad)
+    let opener = null;
 
-    if (btnEdit) btnEdit.addEventListener('click', open);
+    const close = () => {
+        modal.classList.remove('is-active');
+        document.removeEventListener('keydown', onKeydown);
+        if (opener && typeof opener.focus === 'function') {
+            try { opener.focus(); } catch (_) { /* ignore */ }
+        }
+    };
+    const open = () => {
+        opener = document.activeElement;
+        modal.classList.add('is-active');
+        setTimeout(() => {
+            const first = modal.querySelector('input[name="name"]');
+            if (first) first.focus();
+        }, 0);
+    };
+
+    // Cerrar con Escape
+    const onKeydown = (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+        }
+    };
+
+    if (btnEdit) btnEdit.addEventListener('click', () => {
+        open();
+        document.addEventListener('keydown', onKeydown);
+    });
     if (btnCancel) btnCancel.addEventListener('click', close);
     if (btnDelete) btnDelete.addEventListener('click', close);
     if (bg) bg.addEventListener('click', close);
+
+    // Eliminar empresa (con confirmación)
+    if (btnDeleteCompany) {
+        btnDeleteCompany.addEventListener('click', () => {
+            openModal(
+                'Eliminar empresa',
+                `<p>¿Seguro que deseas eliminar la empresa <strong>${escapeHtml(company.name || '')}</strong>?</p>
+                 <p class="mt-2 is-size-7 has-text-danger">No se puede eliminar una empresa con facturas asociadas.</p>`,
+                async () => {
+                    try {
+                        await apiFetch(`/api/${company.id}`, { method: 'DELETE' });
+                        showToast('Empresa eliminada', 'is-success');
+                        setSelectedCompany(null);
+                        window.location.href = '/frontend/companies.html';
+                    } catch (err) {
+                        showToast('Error al eliminar: ' + err.message, 'is-danger');
+                    }
+                },
+                'Eliminar'
+            );
+        });
+    }
 
     if (form) {
         form.addEventListener('submit', async (e) => {
@@ -299,12 +397,18 @@ function wireEditModal(company) {
                 email: form.email.value,
                 phone: form.phone.value,
                 contact: form.contact.value,
+                formula: form.formula.value,
+                formula_r: form.formula_r.value,
+                first_num: parseInt(form.first_num.value, 10) || 1,
                 test: form.test.checked
             };
+            // Solo enviar certificado/clave si se rellenan (para no sobreescribir)
+            if (form.cert_file.value.trim()) data.cert_file = form.cert_file.value.trim();
+            if (form.key_file.value.trim()) data.key_file = form.key_file.value.trim();
+
             try {
                 await apiFetch(`/api/${company.id}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
                 showToast('Empresa actualizada correctamente', 'is-success');
