@@ -298,13 +298,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ── Compute line values ─────────────────────────────────────────────
+    // Debe replicar el cálculo del backend (app/models.py process_lines):
+    // cuota sobre la base SIN redondear y redondeo aritmético al alza (half-up).
     function computeLineValues(line) {
         const units = parseFloat(line.units) || 0;
         const price = parseFloat(line.price) || 0;
         const vat = (parseFloat(line.vat) || 0);
-        const subtotal = units * price;
-        const iva = subtotal * vat / 100;
-        const total = subtotal + iva;
+        const baseRaw = units * price;                 // base sin redondear
+        const subtotal = roundHalfUp2(baseRaw);        // base imponible
+        const iva = vat ? roundHalfUp2(baseRaw * vat / 100) : 0;  // cuota sobre base sin redondear
+        const total = roundHalfUp2(subtotal + iva);    // base + cuota (coherente)
         return { subtotal, iva, total };
     }
 
@@ -386,9 +389,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             iva += v.iva;
             total += v.total;
         });
-        document.getElementById('sum-base').value = formatEUR(base);
-        document.getElementById('sum-iva').value = formatEUR(iva);
-        document.getElementById('sum-total').value = formatEUR(total);
+        // Redondear los totales acumulados (la suma de float puede dar ruido)
+        document.getElementById('sum-base').value = formatEUR(roundHalfUp2(base));
+        document.getElementById('sum-iva').value = formatEUR(roundHalfUp2(iva));
+        document.getElementById('sum-total').value = formatEUR(roundHalfUp2(total));
     }
 
     // ── Update type badge ──────────────────────────────────────────────

@@ -265,6 +265,39 @@ function formatEUR(n) {
 }
 
 /**
+ * Redondeo aritmético al alza (half-up) a 2 decimales, robusto frente al
+ * error de representación en coma flotante de JavaScript.
+ *
+ * El problema: parseFloat('43.925') === 43.92499999999999…, y
+ * Math.round(43.924999… * 100) === 4392 (-> 43,92) en vez de 43,93.
+ * La solución: usar la representación string (que JS genera con "shortest
+ * repr", recuperando "43.925") y redondear sobre ella.
+ *
+ * Normativa ES: Reglamento CE 1103/97 (al céntimo más próximo, al alza en .5).
+ * @param {number} n
+ * @returns {number}
+ */
+function roundHalfUp2(n) {
+    if (!isFinite(n) || n === 0) return 0;
+    const sign = n < 0 ? -1 : 1;
+    let s = String(Math.abs(n));
+    // Notación científica (números muy grandes/pequeños): fallback con épsilon
+    if (s.indexOf('e') !== -1 || s.indexOf('E') !== -1) {
+        return sign * Math.round((Math.abs(n) + 1e-9) * 100) / 100;
+    }
+    const dot = s.indexOf('.');
+    if (dot === -1) return n;                  // entero, sin redondear
+    const dec = s.slice(dot + 1);
+    if (dec.length <= 2) return n;             // ya tiene <= 2 decimales
+    const intPart = s.slice(0, dot);
+    const cents = dec.slice(0, 2);             // 2 primeros decimales
+    const next = dec[2];                        // 3er decimal: decide el redondeo
+    let value = parseInt(intPart + cents, 10);  // valor en céntimos
+    if (next >= '5') value += 1;               // half-up
+    return sign * value / 100;
+}
+
+/**
  * Get URL query parameter by name.
  * @param {string} name
  * @returns {string|null}

@@ -6,12 +6,32 @@
 import re
 import urllib.parse
 
+from decimal import Decimal, ROUND_HALF_UP
+
 from flask import jsonify
 from sqlalchemy import text
 from http import HTTPStatus
 from datetime import datetime
 
 from app import db
+
+
+# Dos decimales exactos para importes en euros. El redondeo aritmético al alza
+# (half-up) es el exigido por la normativa española (Reglamento CE 1103/97 y
+# DGT V1919-18). NO usar el redondeo "banker's" (half-even) de Python/IEEE 754.
+_CENTS = Decimal('0.01')
+
+
+def round_money(value):
+    """Redondea un importe a 2 decimales con redondeo aritmético al alza (half-up).
+
+    Acepta Decimal, float, int o str (con coma o punto decimal). Devuelve Decimal.
+    """
+    if isinstance(value, Decimal):
+        d = value
+    else:
+        d = Decimal(str(value).replace(',', '.'))
+    return d.quantize(_CENTS, rounding=ROUND_HALF_UP)
 
 
 class Company(db.Model):
@@ -74,9 +94,9 @@ class Invoice(db.Model):
     city = db.Column(db.String(25))
     state = db.Column(db.String(25))
     country = db.Column(db.String(2), default='ES')
-    tvat = db.Column(db.Float, nullable=False, default=0.0)
-    bi = db.Column(db.Float, nullable=False, default=0.0)
-    total = db.Column(db.Float, nullable=False, default=0.0)
+    tvat = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    bi = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    total = db.Column(db.Numeric(14, 2), nullable=False, default=0)
     email = db.Column(db.String(50))
     ref = db.Column(db.String(25))
     comments = db.Column(db.Text)
@@ -148,19 +168,19 @@ class Invoice(db.Model):
     def get_verifactu_qr(self):
         return self.company.get_url_aeat() + 'wlpl/TIKE-CONT/ValidarQR?nif=' + urllib.parse.quote(self.company.vat_id) +\
                '&numserie=' + urllib.parse.quote(self.get_number_format()) + '&fecha=' +\
-               urllib.parse.quote(self.dt.strftime('%d-%m-%Y')) + '&importe=' + urllib.parse.quote(f'{float(self.total):.2f}')
+               urllib.parse.quote(self.dt.strftime('%d-%m-%Y')) + '&importe=' + urllib.parse.quote(f'{Decimal(str(self.total or 0)):.2f}')
 
     def get_number(self, value, default=0):
         try:
-            return float(str(value).replace(',', '.'))
+            return Decimal(str(value).replace(',', '.'))
         except:
-            return default
+            return Decimal(str(default))
 
     def process_lines(self, data):
         num = 0
-        self.tvat = 0
-        self.bi = 0
-        self.total =  0
+        self.tvat = Decimal('0')
+        self.bi = Decimal('0')
+        self.total = Decimal('0')
         for line in data['lines']:
             ret, status = InvoiceLine.validate_fields(line)
             if status:
@@ -174,10 +194,18 @@ class Invoice(db.Model):
             units = self.get_number(line['units'], 1)
             price = self.get_number(line['price'])
             vat = self.get_number(line['vat'])
-            invoice_line.vat = vat if vat else None
-            invoice_line.bi = round(units * price, 2)
-            invoice_line.tvat = round(invoice_line.bi * ((vat or 0) / 100), 2)
-            invoice_line.total = round(invoice_line.bi + invoice_line.tvat, 2)
+            invoice_line.vat = int(vat) if vat else None
+            # Base sin redondear (precio × unidades): se conserva la precisión
+            # para calcular la cuota. Redondear aquí propagaría el error (43,925
+            # -> 43,93 y luego 43,93 × 21% = 9,23, total 53,16 ≠ lo cobrado).
+            base_raw = units * price
+            # Cuota calculada sobre la base SIN redondear (normativa ES / TEAC
+            # 00/02233/2022: no redondear valores intermedios). Así 43,925 × 21%
+            # = 9,22425 -> 9,22 y total = 43,93 + 9,22 = 53,15.
+            cuota_raw = (base_raw * vat / Decimal('100')) if vat else Decimal('0')
+            invoice_line.bi = round_money(base_raw)
+            invoice_line.tvat = round_money(cuota_raw)
+            invoice_line.total = invoice_line.bi + invoice_line.tvat
             self.bi += invoice_line.bi
             self.tvat += invoice_line.tvat
             self.total += invoice_line.total
@@ -191,14 +219,14 @@ class InvoiceLine(db.Model):
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id', ondelete='CASCADE'), primary_key=True)
     num = db.Column(db.Integer, primary_key=True, default=1)
     descr = db.Column(db.String(100))
-    units = db.Column(db.Integer)
-    price = db.Column(db.Float)
+    units = db.Column(db.Numeric(10, 3))
+    price = db.Column(db.Numeric(12, 6))
     vat = db.Column(db.Integer)
     clave_regimen = db.Column(db.String(2))
     calificacion = db.Column(db.String(2))
-    tvat = db.Column(db.Float)
-    bi = db.Column(db.Float)
-    total = db.Column(db.Float)
+    tvat = db.Column(db.Numeric(14, 2))
+    bi = db.Column(db.Numeric(14, 2))
+    total = db.Column(db.Numeric(14, 2))
 
     invoice = db.relationship('Invoice', backref=db.backref('invoice_lines', order_by='InvoiceLine.num'))
 

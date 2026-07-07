@@ -13,6 +13,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 from datetime import datetime
+from decimal import Decimal
 from sqlalchemy import desc, update
 from configparser import UNNAMED_SECTION
 from xml.sax.saxutils import escape
@@ -61,7 +62,11 @@ class verifactuXML:
             sys.exit('Software info not found')
 
     def cur(self, num):
-        return f'{float(num):.2f}'
+        # Formato AEAT (XSD ImporteSgn12.2Type): punto decimal, 2 decimales.
+        # Los importes ya llegan redondeados a 2 dp; aquí sólo se formatea.
+        if num is None:
+            num = 0
+        return f'{Decimal(str(num)):.2f}'
 
     def dt(self, invoice):
         return invoice.dt.strftime('%d-%m-%Y')
@@ -131,8 +136,8 @@ class verifactuXML:
                 xml += '</FacturasSustituidas>' if invoice.verifactu_type == 'F3' else '</FacturasRectificadas>'
 
             if invoice.verifactu_stype == 'S':
-                bi_total = 0.0
-                tvat_total = 0.0
+                bi_total = Decimal('0')
+                tvat_total = Decimal('0')
                 for rinvoice in rinvoices:
                     totals = (
                         db.session.query(
@@ -141,8 +146,8 @@ class verifactuXML:
                         ).filter(InvoiceLine.invoice_id == rinvoice.id).first()
                     )
                     if totals:
-                        bi_total += float(totals.bi or 0)
-                        tvat_total += float(totals.tvat or 0)
+                        bi_total += Decimal(str(totals.bi or 0))
+                        tvat_total += Decimal(str(totals.tvat or 0))
                 xml += f'<ImporteRectificacion><BaseRectificada>{self.cur(bi_total)}</BaseRectificada>'
                 xml += f'<CuotaRectificada>{self.cur(tvat_total)}</CuotaRectificada></ImporteRectificacion>'
 

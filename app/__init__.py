@@ -11,9 +11,11 @@ import qrcode
 import configparser
 
 from http import HTTPStatus
+from decimal import Decimal
 from urllib.parse import urlparse
 from flask_sqlalchemy import SQLAlchemy
 from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask.json.provider import DefaultJSONProvider
 from configparser import UNNAMED_SECTION
 from sqlalchemy import text, inspect
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -24,6 +26,22 @@ db = SQLAlchemy()
 app = Flask(__name__)
 config_file = 'verifactu.conf'
 time_zone = 'Europe/Madrid' # 'Atlantic/Canary' para Canarias
+
+
+class DecimalJSONProvider(DefaultJSONProvider):
+    """Serializa Decimal (columnas Numeric) como number en las respuestas JSON.
+
+    Flask 3.1 ya convierte Decimal a str; aquí lo servimos como float para
+    mantener la API devolviendo números (igual que antes con Float). Los
+    importes están redondeados a 2 dp, y json usa el "shortest repr" del
+    float, así 43.93 se serializa como 43.93 (sin pérdida visible).
+    """
+
+    @staticmethod
+    def default(o):
+        if isinstance(o, Decimal):
+            return float(o)
+        return DefaultJSONProvider.default(o)
 
 
 def create_app():
@@ -50,6 +68,8 @@ def create_app():
     # ProxyFix: tras un proxy inverso, request.remote_addr refleja la IP real
     # del cliente (X-Forwarded-For). Sin proxy, no tiene efecto.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+    # Serializar Decimal (columnas Numeric) como number en JSON
+    app.json = DecimalJSONProvider(app)
     db.init_app(app)
     with app.app_context():
             from . import models
